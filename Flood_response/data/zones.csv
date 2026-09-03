@@ -1,0 +1,4 @@
+zone_id,target_node,flood_severity,vulnerability,waiting_minutes
+ZONE-1,N5,0.90,0.80,50
+ZONE-2,N7,0.70,0.90,35
+ZONE-3,N8,0.55,0.60,70
