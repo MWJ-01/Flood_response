@@ -1,4 +1,4 @@
-"""Small and transparent decision-support prototype for a flood scenario."""
+"""Small and transparent decision_support prototype for a flood scenario."""
 
 from __future__ import annotations
 
