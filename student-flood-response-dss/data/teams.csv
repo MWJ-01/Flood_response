@@ -1,0 +1,3 @@
+team_id,start_node,vehicle_type,status
+TEAM-A,N1,general,available
+TEAM-B,N3,high_clearance,available

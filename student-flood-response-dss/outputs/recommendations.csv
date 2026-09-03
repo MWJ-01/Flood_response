@@ -1,0 +1,3 @@
+team_id,zone_id,priority,travel_minutes,maximum_depth_m,route
+TEAM-B,ZONE-1,0.796,5.0,0.35,N3 -> N4 -> N5
+TEAM-A,ZONE-2,0.708,11.0,0.1,N1 -> N2 -> N4 -> N7
