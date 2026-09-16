@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flood Response Decision Support — Operations Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  :root {
+    --bg:#0b0f13; --panel:#10161c; --panel2:#0d1318; --line:#1e2833; --line2:#182029;
+    --ink:#dbe3ec; --ink2:#aebbc8; --mute:#7d8b9b; --mute2:#5d6a77;
+    --teal:#3fb6ad; --red:#e0453b; --orange:#e0854a; --amber:#d9a92b; --blue:#4b8ef0; --green:#4fb890;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans',system-ui,sans-serif; }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+  a { color:var(--teal); text-decoration:none; }
+  a:hover { color:#78d8d0; }
+  #app { display:flex; flex-direction:column; min-height:100vh; padding:14px; gap:10px; }
+  .topbar { display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between;
+            border-bottom:1px solid var(--line); padding-bottom:10px; }
+  .nav { display:flex; gap:2px; align-items:center; }
+  .nav a, .nav span.cur { font-size:12px; letter-spacing:.06em; text-transform:uppercase; padding:5px 10px;
+          border:1px solid var(--line); font-family:'IBM Plex Mono',monospace; }
+  .nav span.cur { background:#16222c; color:var(--ink); border-color:#2a3b49; }
+  .nav a { color:var(--mute); }
+  .nav a:hover { color:var(--ink); background:#141d25; }
+  .chip { border:1px solid var(--line); padding:5px 9px; background:var(--panel); font-family:'IBM Plex Mono',monospace; font-size:11px; }
+  .chip .lb { color:var(--mute2); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; }
+  .seg { display:flex; flex-wrap:wrap; gap:1px; background:var(--line2); }
+  .seg button { background:var(--panel2); border:none; color:var(--mute); font-family:'IBM Plex Mono',monospace;
+                font-size:11px; padding:6px 10px; cursor:pointer; letter-spacing:.03em; }
+  .seg button:hover { color:var(--ink); background:#151f27; }
+  .seg button.on { background:#16303a; color:#7fdcd3; }
+  .main { display:flex; flex-wrap:wrap; gap:10px; flex:1 1 auto; align-items:stretch; }
+  .card { border:1px solid var(--line); background:var(--panel); }
+  .card-hd { padding:8px 12px; border-bottom:1px solid var(--line2); display:flex; gap:10px; flex-wrap:wrap;
+             align-items:center; justify-content:space-between; font-size:12px; font-weight:600; letter-spacing:.04em;
+             text-transform:uppercase; }
+  #mapcol { flex:3 1 520px; min-width:320px; display:flex; flex-direction:column; }
+  #datacol { flex:2 1 360px; min-width:300px; display:flex; flex-direction:column; gap:10px; }
+  #mapbox { position:relative; flex:1 1 auto; min-height:300px; }
+  svg#map { width:100%; height:100%; display:block; cursor:crosshair; }
+  #readout { position:absolute; right:8px; top:8px; background:rgba(9,13,17,.92); border:1px solid #243140;
+             padding:7px 9px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; line-height:1.6;
+             pointer-events:none; min-width:212px; }
+  #readout .k { color:var(--mute2); }
+  #readout .v { color:var(--ink); }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; padding:7px 12px; border-top:1px solid var(--line2);
+            font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--mute); }
+  .sw { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:middle; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; padding:6px 6px; color:var(--mute2); font-weight:500; font-size:9.5px; letter-spacing:.06em;
+       text-transform:uppercase; font-family:'IBM Plex Mono',monospace; border-bottom:1px solid var(--line); }
+  td { padding:7px 6px; border-bottom:1px solid var(--line2); color:var(--ink2); vertical-align:middle; }
+  tr.clickable { cursor:pointer; }
+  tr.clickable:hover td { background:#141d25; }
+  .barcell { position:relative; height:18px; background:#0a0f14; min-width:60px; }
+  .barcell > i { position:absolute; left:0; top:0; bottom:0; display:block; transition:width .6s cubic-bezier(.4,0,.2,1); }
+  .barcell > b { position:absolute; right:4px; top:2px; font-family:'IBM Plex Mono',monospace; font-size:10.5px;
+                 font-weight:500; color:var(--ink); }
+  .srctag { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--mute2); border:1px solid var(--line);
+            padding:1px 4px; cursor:help; }
+  .gauge { border-bottom:1px solid var(--line2); padding:10px 12px; }
+  .gv { display:grid; grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); gap:1px; background:var(--line2); margin-top:8px; }
+  .gv > div { background:var(--panel2); padding:6px 8px; }
+  .gv .l { font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--mute2);
+           font-family:'IBM Plex Mono',monospace; }
+  .gv .n { font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--ink); margin-top:2px; }
+  .gv .n.na { color:var(--mute2); font-size:12px; }
+  details { border:1px solid var(--line); background:var(--panel); }
+  summary { padding:8px 12px; cursor:pointer; font-size:12px; font-weight:600; letter-spacing:.04em;
+            text-transform:uppercase; color:var(--ink2); list-style:none; display:flex; justify-content:space-between; }
+  summary::-webkit-details-marker { display:none; }
+  summary:hover { color:var(--ink); }
+  .rec { border-top:1px solid var(--line2); padding:9px 12px; display:flex; flex-direction:column; gap:6px; }
+  .btnrow { display:flex; gap:6px; flex-wrap:wrap; }
+  .btnrow button { font-family:'IBM Plex Sans',sans-serif; font-size:11.5px; padding:5px 9px; cursor:pointer; flex:1 1 auto; }
+  .bAcc { background:#113029; border:1px solid #24564a; color:#6fd2c4; }
+  .bMod { background:#1a1a10; border:1px solid #4a4423; color:#d9c169; }
+  .bRej { background:#1e1311; border:1px solid #50291f; color:#d98b7e; }
+  .note { font-size:11px; color:var(--mute2); line-height:1.55; }
+  .tl { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; }
+  .tl input[type=range] { flex:1 1 200px; accent-color:var(--teal); min-width:160px; }
+  .playbtn { background:#16303a; border:1px solid #2a4c56; color:#7fdcd3; font-family:'IBM Plex Mono',monospace;
+             font-size:11px; padding:5px 11px; cursor:pointer; }
+  .pulse { animation:ping 2.6s cubic-bezier(.2,.6,.4,1) infinite; transform-box:fill-box; transform-origin:center; }
+  @keyframes ping { 0%{transform:scale(.6);opacity:.8} 70%{transform:scale(2.8);opacity:0} 100%{opacity:0} }
+  #srclist { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:4px 16px; padding:10px 12px; }
+  #srclist div { font-size:11px; color:var(--mute); line-height:1.5; }
+  #status { font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--mute2); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-size:17px;font-weight:600;letter-spacing:.02em">Flood Response Decision Support</span>
+        <span class="mono" style="font-size:10px;color:var(--mute);border:1px solid #22303d;padding:2px 6px">PROTOTYPE · HISTORICAL EVENT REPLAY</span>
+      </div>
+      <div style="font-size:12px;color:#8898a8">Human-in-the-loop dispatch advice over published flood observations. Hover the map for coordinates; click a state, then a gauge, to drill in.</div>
+    </div>
+    <div class="nav">
+      <span class="cur">Operations map</span>
+      <a href="flood_over_time.html">Flood over time →</a>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <span class="mono" style="font-size:9.5px;letter-spacing:.06em;color:var(--mute2)">EVENT</span>
+      <div class="seg" id="eventSeg"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="mono" style="font-size:9.5px;letter-spacing:.06em;color:var(--mute2)">MEASURE</span>
+      <div class="seg" id="metricSeg"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div id="mapcol" class="card">
+      <div class="card-hd">
+        <div id="crumb" class="mono" style="font-size:11px;letter-spacing:.03em;text-transform:none"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="playbtn" id="backBtn" style="display:none">← Back</button>
+          <span id="status">loading geometry…</span>
+        </div>
+      </div>
+      <div id="mapbox">
+        <svg id="map" viewBox="0 0 560 420"></svg>
+        <div id="readout">
+          <div><span class="k">LAT </span><span class="v" id="rLat">—</span></div>
+          <div><span class="k">LON </span><span class="v" id="rLon">—</span></div>
+          <div><span class="k">DEC </span><span class="v" id="rDec">—</span></div>
+          <div><span class="k">AREA</span> <span class="v" id="rArea">—</span></div>
+          <div><span class="k">GAUGE</span> <span class="v" id="rGauge">—</span></div>
+          <div><span class="k">MODELLED DEPTH</span> <span class="v" id="rDepth">—</span></div>
+        </div>
+      </div>
+      <div class="tl">
+        <button class="playbtn" id="playBtn">▶ PLAY</button>
+        <input type="range" id="tlRange" min="0" max="1" step="1" value="0" />
+        <span class="mono" id="tlLabel" style="font-size:11px;color:var(--ink2);min-width:170px"></span>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div id="datacol">
+      <div class="card">
+        <div class="card-hd"><span id="dataTitle">Measure by state</span><span class="mono" id="dataSub" style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--mute2)"></span></div>
+        <div id="dataBody"></div>
+      </div>
+      <details id="dispatch">
+        <summary>Dispatch recommendations <span class="mono" style="font-size:10px;color:var(--mute2)" id="dispCount"></span></summary>
+        <div id="dispBody"></div>
+      </details>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hd"><span>Sources &amp; data provenance</span><span class="mono" style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--mute2)">every figure below carries the tag of the source it was read from</span></div>
+    <div id="srclist"></div>
+    <div class="note" style="padding:0 12px 10px">Gauge heights, rainfall totals, dam levels and property counts are as published by the cited agencies and reports. Inundation polygons, per-gauge arrival times between published observations, depth-at-cursor and all dispatch recommendations are <b style="color:var(--amber)">modelled for this prototype</b> and are not official flood extents. Geometry: Natural Earth 1:50m state boundaries (national view) and 1:10m coastline plus river centrelines (drill-in), both public domain.</div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------------- sources */
+const SRC = {
+  bcc:   ['BCC', 'Brisbane City Council, Brisbane Flood Review (tabled 10 May 2022) & historical flood mapping', 'https://storymaps.arcgis.com/stories/28331baf7c584fb5be84ae1b8b7389f2'],
+  bomBne:['BOM-B', 'Bureau of Meteorology — Brisbane River below Wivenhoe Dam flood warning system', 'https://www.bom.gov.au/qld/flood/brochures/brisbane_lower/brisbane_lower.shtml'],
+  bomBur:['BOM-U', 'Bureau of Meteorology — Burnett River flood warning system', 'https://www.bom.gov.au/qld/flood/brochures/burnett/burnett.shtml'],
+  grif:  ['GU', 'Griffith University — “Why was Brisbane’s 2022 flood different?” (2023)', 'https://news.griffith.edu.au/2023/05/23/why-was-brisbanes-2022-flood-different/'],
+  guard: ['GDN', 'The Guardian Australia, 1 March 2022 — Wivenhoe inflow and storage', 'https://www.pressreader.com/australia/the-guardian-australia/20220301/281659668493973'],
+  wiki22:['W22', 'Wikipedia — 2022 eastern Australia floods (rainfall records, Brisbane homes inundated)', 'https://en.wikipedia.org/wiki/2022_eastern_Australia_floods'],
+  aidrN: ['AIDR-N', 'Australian Disaster Resilience Knowledge Hub — Flooding, New South Wales, 2022', 'https://knowledge.aidr.org.au/resources/flood-flooding-new-south-wales-2022/'],
+  abcLis:['ABC-L', 'ABC News, 28 Feb 2022 — Lismore levee breach, Wilsons River 14.37 m', 'https://www.abc.net.au/news/2022-02-28/lismore-flood-emergency-levee-breaks-largest-on-record/100866296'],
+  sesLis:['SES-L', 'NSW SES — Lismore CBD flood guide (peak 14.37 m, levee history)', 'https://www.ses.nsw.gov.au/sites/default/files/document/nsw-ses_flood-guide_lismore-cbd_v07_digital.pdf'],
+  tcc:   ['TCC', 'Townsville City Council — 2019 weather event & Ross River Dam', 'https://www.townsville.qld.gov.au/community-support/community-safety/disaster-management/2019-weather-event'],
+  tccDam:['TCC-D', 'Townsville City Council — Ross River Dam catchment inflow 932,748 ML', 'https://www.townsville.qld.gov.au/water-waste-and-environment/water-supply-and-dams/ross-river-dam'],
+  jba19: ['JBA', 'JBA Risk Management — retrospective of 2019 Townsville flooding (claims, release rate, gauge)', 'https://www.jbarisk.com/products-services/event-response/a-retrospective-of-townsville-flooding/'],
+  aidrT: ['AIDR-T', 'Australian Disaster Resilience Knowledge Hub — 2019 storms and floods, Townsville', 'https://knowledge.aidr.org.au/resources/2019-storms-and-floods-qld-townsville/'],
+  rf19:  ['RF-T', 'Risk Frontiers — Townsville 2019 flood, insights from the field', 'https://riskfrontiers.com/insights/townsville-2019-flood-insights-from-the-field/'],
+  jcu:   ['JCU', 'James Cook University Centre for Disaster Studies — post-disaster survey, Townsville 2019', 'https://www.jcu.edu.au/centre-for-disaster-studies/publications/reports/post-disaster-reports/Townsville-2019-flood.pdf'],
+  aidrO: ['AIDR-O', 'Australian Disaster Resilience Knowledge Hub — Cyclone Oswald, QLD & NSW 2013', 'https://knowledge.aidr.org.au/resources/cyclone-oswald-queensland-new-south-wales-2013/'],
+  abcBdb:['ABC-B', 'ABC News, 24 Jan 2023 — Bundaberg, 10 years after ex-TC Oswald', 'https://www.abc.net.au/news/2023-01-24/renewed-calls-bundaberg-flood-evacuation-route-cyclone-oswald/101882720'],
+  aidrV: ['AIDR-V', 'Australian Disaster Resilience Knowledge Hub — Flood, Victoria, October 2022', 'https://knowledge.aidr.org.au/resources/flood-victoria-october-2022/'],
+  rfVic: ['RF-V', 'Risk Frontiers — The October 2022 Victorian floods', 'https://riskfrontiers.com/insights/victorian-floods-october-2022/'],
+  ica:   ['ICA', 'Insurance Council of Australia — 2022 flood insured losses (A$5.81bn, 240,000+ claims)', 'https://www.reinsurancene.ws/ica-raises-insured-loss-from-2022-australia-floods-to-5-81bn/'],
+  model: ['MOD', 'Modelled for this prototype — not an official figure', '']
+};
+
+/* ---------------------------------------------------------------- data */
+// m = metric values. Each entry: [value, srcKey, note]. null value = not published in cited sources.
+const EVENTS = [
+  {
+    id:'seq2022', label:'SE QLD 2022', title:'South East Queensland & Northern Rivers floods',
+    window:'22 Feb – 7 Mar 2022', days:['25 Feb','26 Feb','27 Feb','28 Feb','1 Mar'],
+    peakDay:3, view:[[148.6,-30.6],[154.4,-25.0]],
+    states:{
+      'Queensland':{
+        gauge:[3.85,'bcc','Brisbane River at Brisbane City Gauge (Edward St), 09:00 28 Feb 2022 — major level 3.50 m'],
+        discharge:[null,'model','not published per-gauge in cited sources'],
+        volume:[1450,'guard','inflow to Wivenhoe Dam over three days; storage rose from under 60% to 183%'],
+        area:[null,'model','peak-extent area not published as a single figure'],
+        rain:[444.6,'bomBne','record 4-day Brisbane River catchment average, 25–28 Feb 2022 (previous record 397.4 mm, 1974)'],
+        homes:[23400,'wiki22','homes inundated in Brisbane; 177 suburbs impacted'],
+        ttp:[46,'bcc','from first major-flood alert (26 Feb) to city-gauge peak, hours']
+      },
+      'New South Wales':{
+        gauge:[14.37,'abcLis','Wilsons River at Lismore, 28 Feb 2022 — previous record 12.11 m (1954, 1974)'],
+        discharge:[null,'model','not published in cited sources'],
+        volume:[null,'model','not published in cited sources'],
+        area:[null,'model','not published in cited sources'],
+        rain:[503,'aidrN','24 h to 27 Feb at Rock Valley, upper Wilsons River catchment'],
+        homes:[4055,'aidrN','properties deemed uninhabitable across the NSW event'],
+        ttp:[34,'aidrN','from BOM minor/moderate forecast to Lismore record peak, hours']
+      }
+    },
+    gauges:[
+      {n:'Brisbane River at Brisbane City Gauge', short:'Brisbane City', state:'Queensland', lon:153.0313, lat:-27.4744,
+       peak:[3.85,'bcc'], major:3.50, prev:[[4.46,'2011'],[5.45,'1974']],
+       series:[[1.87,'26 Feb 14:00','grok'],[3.41,'27 Feb 19:00','grok'],[3.85,'28 Feb 09:00','bcc']],
+       vals:{rain:[444.6,'bomBne','4-day catchment average'], homes:[23400,'wiki22','Brisbane LGA'], volume:[1450,'guard','Wivenhoe 3-day inflow'], ttp:[46,'bcc']},
+       need:'Riverine inundation across 177 suburbs; swift-water and structural assessment'},
+      {n:'Bremer River at Ipswich', short:'Ipswich', state:'Queensland', lon:152.7620, lat:-27.6135,
+       peak:[16.72,'wiki22'], major:11.70, prev:[[19.40,'2011']],
+       vals:{rain:[682,'wiki22','25–28 Feb catchment total'], homes:[null,'model'], volume:[null,'model'], ttp:[null,'model']},
+       need:'Bremer confluence backwater; evacuation of low-lying Ipswich CBD fringe'},
+      {n:'Mary River at Gympie', short:'Gympie', state:'Queensland', lon:152.6650, lat:-26.1880,
+       peak:[22.96,'wiki22'], major:12.00, prev:[[21.95,'2013']],
+       vals:{rain:[null,'model'], homes:[1000,'wiki22','properties affected, reported'], volume:[null,'model'], ttp:[null,'model']},
+       need:'Highest Mary River level in over a century; CBD isolation'},
+      {n:'Wivenhoe Dam (Lake Wivenhoe)', short:'Wivenhoe Dam', state:'Queensland', lon:152.6080, lat:-27.3950,
+       peak:[183,'guard'], major:100, unit:'% FSL', prev:[[190,'2011']],
+       vals:{volume:[1450,'guard','3-day inflow, GL'], rain:[null,'model'], homes:[null,'model'], ttp:[null,'model']},
+       need:'Gate operations; 2.2 million ML held before releases began'},
+      {n:'Wilsons River at Lismore', short:'Lismore', state:'New South Wales', lon:153.2770, lat:-28.8100,
+       peak:[14.37,'abcLis'], major:9.70, prev:[[12.11,'1954 & 1974'],[11.60,'2017']],
+       vals:{rain:[503,'aidrN','24 h, Rock Valley'], homes:[4055,'aidrN','NSW properties uninhabitable'], volume:[null,'model'], ttp:[34,'aidrN']},
+       need:'Levee overtopped by 4.37 m; rooftop rescues, CBD cut off'},
+      {n:'Richmond River at Casino', short:'Casino', state:'New South Wales', lon:153.0500, lat:-28.8600,
+       peak:[16.49,'aidrN'], major:9.50, prev:[[16.21,'2008']],
+       vals:{rain:[null,'model'], homes:[null,'model'], volume:[null,'model'], ttp:[null,'model']},
+       need:'Record peak 0.28 m above 2008; downstream Coraki / Woodburn warning'},
+      {n:'Tweed River at Murwillumbah', short:'Murwillumbah', state:'New South Wales', lon:153.3970, lat:-28.3270,
+       peak:[6.51,'aidrN'], major:5.00, prev:[[6.20,'2017']],
+       vals:{rain:[null,'model'], homes:[null,'model'], volume:[null,'model'], ttp:[null,'model']},
+       need:'Record peak 0.31 m above 2017; town centre evacuation'}
+    ]
+  },
+  {
+    id:'tsv2019', label:'Townsville 2019', title:'North Queensland monsoon flood',
+    window:'27 Jan – 8 Feb 2019', days:['31 Jan','1 Feb','2 Feb','3 Feb','4 Feb'],
+    peakDay:3, view:[[145.6,-20.9],[147.6,-18.6]],
+    states:{
+      'Queensland':{
+        gauge:[43.00,'tcc','Ross River Dam peak lake level, 3 Feb 2019 — 247% of capacity, highest on record'],
+        discharge:[1900,'jba19','peak release from Ross River Dam with all gates open'],
+        volume:[932748,'tccDam','flood water received in the Ross Dam catchment (ML) — nearly four times full supply level'],
+        area:[null,'model','official inundated-area figure not published in cited sources'],
+        rain:[1259.8,'aidrT','Townsville Aero, 10 days to 8 Feb 2019 — previous record 925.5 mm (Jan 1953)'],
+        homes:[3300,'rf19','properties damaged; council tally 1,879 minor / 1,009 moderate / 133 severe'],
+        ttp:[168,'tcc','7-day flood volume window, 29 Jan – 5 Feb, hours']
+      }
+    },
+    gauges:[
+      {n:'Ross River Dam', short:'Ross River Dam', state:'Queensland', lon:146.7530, lat:-19.3560,
+       peak:[43.00,'tcc'], major:38.20, unit:'m lake level', prev:[[41.40,'1998']],
+       series:[[39.9,'31 Jan','model'],[41.6,'1 Feb','model'],[42.6,'2 Feb','model'],[43.00,'3 Feb 22:00','tcc']],
+       vals:{discharge:[1900,'jba19','peak gated release, m³/s'], volume:[932748,'tccDam','catchment inflow, ML'], rain:[1259.8,'aidrT','Townsville Aero 10-day'], homes:[3300,'rf19']},
+       need:'Gated release above emergency action plan limits; downstream suburbs warned'},
+      {n:'Ross River at Aplins Weir', short:'Aplins Weir', state:'Queensland', lon:146.7930, lat:-19.2960,
+       peak:[7.00,'jba19'], major:7.00, prev:[[8.38,'1998 (Bohle R.)']],
+       vals:{discharge:[1900,'jba19','upstream dam release'], homes:[null,'model'], volume:[null,'model'], rain:[null,'model']},
+       need:'Severe threshold reached; Idalia, Rosslea, Oonoonba, Hermit Park inundated'},
+      {n:'Townsville Aero rain gauge', short:'Townsville Aero', state:'Queensland', lon:146.7661, lat:-19.2483,
+       peak:[1259.8,'aidrT'], major:925.5, unit:'mm / 10 days', prev:[[925.5,'1953']],
+       vals:{rain:[1259.8,'aidrT','10 days to 8 Feb'], homes:[null,'model'], volume:[null,'model'], discharge:[null,'model']},
+       need:'Every catchment gauge above 1,000 mm for the 10 days to 4 Feb'},
+      {n:'Burdekin Falls Dam', short:'Burdekin Falls', state:'Queensland', lon:147.1400, lat:-20.6100,
+       peak:[16000,'jcu'], major:0, unit:'m³/s spill', prev:[],
+       vals:{discharge:[16000,'jcu','approximate spill over the dam'], volume:[null,'model'], rain:[null,'model'], homes:[null,'model']},
+       need:"Queensland's largest water storage spilling; downstream road closures"}
+    ]
+  },
+  {
+    id:'bdb2013', label:'Bundaberg 2013', title:'Ex-Tropical Cyclone Oswald floods',
+    window:'21 – 29 Jan 2013', days:['26 Jan','27 Jan','28 Jan','29 Jan','30 Jan'],
+    peakDay:3, view:[[151.2,-26.4],[153.4,-24.0]],
+    states:{
+      'Queensland':{
+        gauge:[9.53,'abcBdb','Burnett River at Bundaberg — record peak, January 2013'],
+        discharge:[null,'model','not published in cited sources'],
+        volume:[null,'model','not published in cited sources'],
+        area:[33000,'bomBur','Burnett River catchment area, km² (catchment, not inundated extent)'],
+        rain:[1000,'abcBdb','more than 1,000 mm across south-east Queensland in four days'],
+        homes:[2000,'aidrO','homes inundated in Bundaberg, plus 200 businesses; BOM records 2,400 properties destroyed'],
+        ttp:[96,'aidrO','from cyclone landfall on Cape York to Bundaberg peak, hours']
+      }
+    },
+    gauges:[
+      {n:'Burnett River at Bundaberg', short:'Bundaberg', state:'Queensland', lon:152.3500, lat:-24.8660,
+       peak:[9.53,'abcBdb'], major:7.50, prev:[[7.92,'2010']],
+       series:[[6.2,'26 Jan','model'],[7.8,'27 Jan','model'],[9.0,'28 Jan','model'],[9.53,'29 Jan','abcBdb']],
+       vals:{homes:[2000,'aidrO','homes + 200 businesses'], rain:[1000,'abcBdb','4-day SEQ total'], volume:[null,'model'], area:[33000,'bomBur','catchment km²']},
+       need:'Record peak; 5,000 residents ordered out, 1,000+ helicopter rescues'},
+      {n:'Burnett River at Walla Weir', short:'Walla Weir', state:'Queensland', lon:152.0700, lat:-25.0300,
+       peak:[null,'model'], major:0, prev:[],
+       vals:{homes:[null,'model'], rain:[null,'model'], volume:[null,'model'], area:[null,'model']},
+       need:'Upstream weir on the lower Burnett — no published peak in cited sources'},
+      {n:'Mary River at Gympie', short:'Gympie', state:'Queensland', lon:152.6650, lat:-26.1880,
+       peak:[21.95,'wiki22'], major:12.00, prev:[[22.96,'2022']],
+       vals:{homes:[null,'model'], rain:[null,'model'], volume:[null,'model'], area:[null,'model']},
+       need:'Second-highest Mary River level of the modern record'}
+    ]
+  },
+  {
+    id:'vic2022', label:'VIC / TAS 2022', title:'Victoria & northern Tasmania floods',
+    window:'6 Oct 2022 – 3 Jan 2023', days:['13 Oct','14 Oct','15 Oct','16 Oct','17 Oct'],
+    peakDay:1, view:[[143.2,-38.6],[146.6,-35.8]],
+    states:{
+      'Victoria':{
+        gauge:[4.18,'rfVic','Maribyrnong River at Maribyrnong, 14 Oct 2022 — highest recorded level 4.5 m (1906)'],
+        discharge:[null,'model','not published in cited sources'],
+        volume:[null,'model','not published in cited sources'],
+        area:[null,'model','not published in cited sources'],
+        rain:[null,'model','no single catchment figure in cited sources'],
+        homes:[500,'rfVic','homes reported inundated in the first week; modelling indicated up to 34,000 inundated or isolated'],
+        ttp:[2136,'aidrV','event duration 6 Oct 2022 – 3 Jan 2023, hours']
+      },
+      'Tasmania':{
+        gauge:[null,'model','no single state peak in cited sources'],
+        discharge:[null,'model',''], volume:[null,'model',''], area:[null,'model',''], rain:[null,'model',''],
+        homes:[100,'rfVic','homes reported inundated in northern Tasmania'],
+        ttp:[null,'model','']
+      }
+    },
+    gauges:[
+      {n:'Maribyrnong River at Maribyrnong', short:'Maribyrnong', state:'Victoria', lon:144.9010, lat:-37.7720,
+       peak:[4.18,'rfVic'], major:2.40, prev:[[4.50,'1906']],
+       series:[[2.9,'13 Oct','model'],[4.18,'14 Oct','rfVic']],
+       vals:{homes:[100,'rfVic','properties flooded, Maribyrnong / Ascot Vale / Keilor'], rain:[null,'model'], volume:[null,'model'], discharge:[null,'model']},
+       need:'Inner-Melbourne floodplain; boat rescues in Maribyrnong'},
+      {n:'Campaspe River at Rochester', short:'Rochester', state:'Victoria', lon:144.7000, lat:-36.3590,
+       peak:[null,'model'], major:9.00, prev:[],
+       vals:{homes:[null,'model','85% of the town reported inundated'], rain:[null,'model'], volume:[null,'model'], discharge:[null,'model']},
+       need:'Peak above 2011 and 1974; about 85% of Rochester inundated'},
+      {n:'Goulburn River at Seymour', short:'Seymour', state:'Victoria', lon:145.1360, lat:-37.0270,
+       peak:[7.64,'aidrV'], major:6.00, prev:[[7.64,'1974']],
+       vals:{homes:[187,'rfVic','properties with inundation potential per VICSES'], rain:[null,'model'], volume:[null,'model'], discharge:[null,'model']},
+       need:'Above the May 1974 record; 279 further properties at risk of isolation'},
+      {n:'Mersey River, northern Tasmania', short:'Mersey R.', state:'Tasmania', lon:146.3600, lat:-41.2000,
+       peak:[null,'model'], major:0, prev:[],
+       vals:{homes:[100,'rfVic','northern Tasmania'], rain:[null,'model'], volume:[null,'model'], discharge:[null,'model']},
+       need:'Evacuation orders for about 20 towns on the Mersey and Meander'}
+    ]
+  }
+];
+
+const METRICS = [
+  {id:'gauge',     label:'Gauge height',   unit:'m',      fmt:v=>v.toFixed(2)+' m',            color:'#e0453b'},
+  {id:'discharge', label:'Discharge',      unit:'m³/s',   fmt:v=>d3.format(',')(v)+' m³/s',    color:'#4b8ef0'},
+  {id:'volume',    label:'Flood volume',   unit:'GL / ML',fmt:v=>d3.format(',')(v),            color:'#3fb6ad'},
+  {id:'area',      label:'Area',           unit:'km²',    fmt:v=>d3.format(',')(v)+' km²',     color:'#8b7fe0'},
+  {id:'rain',      label:'Rainfall',       unit:'mm',      fmt:v=>d3.format(',.1f')(v)+' mm',  color:'#d9a92b'},
+  {id:'homes',     label:'Dwellings',      unit:'count',  fmt:v=>d3.format(',')(v),            color:'#e0854a'},
+  {id:'ttp',       label:'Time to peak',   unit:'h',      fmt:v=>d3.format(',')(v)+' h',       color:'#4fb890'}
+];
+
+const AU_STATES = ['Queensland','New South Wales','Victoria','Tasmania','South Australia','Western Australia','Northern Territory','Australian Capital Territory'];
+
+/* ---------------------------------------------------------------- state */
+let ev = EVENTS[0], metric = METRICS[0], day = ev.peakDay;
+let level = 'nation', selState = null, selGauge = null;
+let statesGeo = null, coast10 = null, rivers10 = null, tier2Loading = false;
+let playing = false, playTimer = null;
+const decisions = {};
+
+let W = 560, H = 420;
+const svg = d3.select('#map');
+const proj = d3.geoMercator();
+const path = d3.geoPath(proj);
+let gratStep = 5;
+
+/* ---------------------------------------------------------------- helpers */
+const AU_VIEW = {type:'MultiPoint', coordinates:[[112.5,-44.2],[154.2,-9.8]]};
+function box(a, b) { return {type:'MultiPoint', coordinates:[a, b]}; }
+
+function dms(v, pos, neg) {
+  const h = v < 0 ? neg : pos; v = Math.abs(v);
+  const d = Math.floor(v), mf = (v - d) * 60, m = Math.floor(mf), s = (mf - m) * 60;
+  return d + '°' + String(m).padStart(2,'0') + "'" + s.toFixed(1).padStart(4,'0') + '"' + h;
+}
+function niceStep(span) {
+  return [0.01,0.02,0.05,0.1,0.25,0.5,1,2,5,10].reduce((a,b)=>Math.abs(b-span/4)<Math.abs(a-span/4)?b:a);
+}
+function fmtVal(m, entry) {
+  if (!entry || entry[0] === null || entry[0] === undefined) return null;
+  return m.fmt(entry[0]);
+}
+function srcChip(key, note) {
+  const s = SRC[key] || SRC.model;
+  return '<span class="srctag" title="' + (note ? note.replace(/"/g,'&quot;') + ' — ' : '') + s[1].replace(/"/g,'&quot;') + '">' + s[0] + '</span>';
+}
+function gaugesOf(e, state) { return e.gauges.filter(g => !state || g.state === state); }
+function dayFactor(g) {
+  // fraction of the published peak reached at the current timeline day (modelled between observations)
+  const span = ev.days.length - 1, pk = ev.peakDay;
+  if (day >= pk) return 1;
+  const t = day / Math.max(pk,1);
+  return 0.45 + 0.55 * Math.pow(t, 1.6);
+}
+function severity(g) {
+  const pk = g.peak && g.peak[0] !== null ? g.peak[0] : null;
+  if (pk === null || !g.major) return 0.5;
+  return Math.max(0.15, Math.min(1.4, (pk * dayFactor(g)) / g.major));
+}
+function sevColor(r) { return r >= 1.15 ? '#e0453b' : r >= 1 ? '#e0854a' : r >= 0.8 ? '#d9a92b' : '#4b8ef0'; }
+
+/* ---------------------------------------------------------------- geometry load */
+function fetchFirst(urls, i) {
+  i = i || 0;
+  if (i >= urls.length) return Promise.reject(new Error('all sources failed'));
+  return d3.json(urls[i]).catch(() => fetchFirst(urls, i + 1));
+}
+const U_STATES50 = [
+  'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_50m_admin_1_states_provinces.geojson',
+  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_1_states_provinces.geojson'
+];
+const U_COAST10 = [
+  'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_10m_coastline.geojson',
+  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_coastline.geojson'
+];
+const U_RIVERS10 = [
+  'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_10m_rivers_lake_centerlines.geojson',
+  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_rivers_lake_centerlines.geojson'
+];
+
+function setStatus(t) { document.getElementById('status').textContent = t; }
+
+fetchFirst(U_STATES50).then(fc => {
+  statesGeo = fc.features.filter(f => f.properties.admin === 'Australia');
+  setStatus('NE 1:50m admin-1 · ' + statesGeo.length + ' states/territories');
+  measure();
+  build();
+  fitTo(AU_VIEW, false);
+  renderAll();
+}).catch(() => {
+  setStatus('geometry unavailable — check network');
+  document.getElementById('readout').innerHTML = '<span style="color:#e0854a">State geometry could not be loaded from the Natural Earth CDN.</span>';
+});
+
+function loadTier2() {
+  if (coast10 || tier2Loading) return;
+  tier2Loading = true;
+  setStatus('loading NE 1:10m coastline + rivers…');
+  Promise.all([fetchFirst(U_COAST10), fetchFirst(U_RIVERS10)]).then(([c, r]) => {
+    const bb = [110, -45, 156, -9];
+    const inAU = f => {
+      const b = d3.geoBounds(f);
+      return b[1][0] > bb[0] && b[0][0] < bb[2] && b[1][1] > bb[1] && b[0][1] < bb[3];
+    };
+    coast10 = {type:'FeatureCollection', features:c.features.filter(inAU)};
+    rivers10 = {type:'FeatureCollection', features:r.features.filter(inAU)};
+    tier2Loading = false;
+    setStatus('NE 1:10m coastline + river centrelines');
+    redraw();
+  }).catch(() => { tier2Loading = false; setStatus('1:10m detail unavailable — showing 1:50m'); });
+}
+
+/* ---------------------------------------------------------------- map build */
+let lastFit = AU_VIEW;
+
+function measure() {
+  const box = document.getElementById('mapbox').getBoundingClientRect();
+  W = Math.max(280, Math.round(box.width));
+  H = Math.max(260, Math.round(box.height));
+  svg.attr('viewBox', '0 0 ' + W + ' ' + H);
+  svg.select('.bgrect').attr('width', W).attr('height', H);
+  svg.select('.sb').attr('transform', 'translate(14,' + (H - 14) + ')');
+}
+
+function build() {
+  svg.append('rect').attr('class','bgrect').attr('width', W).attr('height', H).attr('fill', '#0a1015');
+  svg.append('path').attr('class','grat').attr('fill','none').attr('stroke','#182430').attr('stroke-width',0.5);
+  svg.append('g').attr('class','states');
+  svg.append('path').attr('class','coast').attr('fill','none').attr('stroke','#3b5c6e').attr('stroke-width',1);
+  svg.append('g').attr('class','rivers');
+  svg.append('g').attr('class','flood');
+  svg.append('g').attr('class','marks');
+  svg.append('g').attr('class','gratLbl');
+  const cross = svg.append('g').attr('class','cross').attr('opacity',0);
+  cross.append('line').attr('class','cx').attr('stroke','#3fb6ad').attr('stroke-width',0.5).attr('stroke-dasharray','3 3');
+  cross.append('line').attr('class','cy').attr('stroke','#3fb6ad').attr('stroke-width',0.5).attr('stroke-dasharray','3 3');
+  const sb = svg.append('g').attr('class','sb').attr('transform','translate(14,' + (H - 14) + ')');
+  sb.append('line').attr('class','sbl').attr('x1',0).attr('y1',0).attr('y2',0).attr('stroke','#7d8b9b').attr('stroke-width',1.2);
+  sb.append('line').attr('class','sb0').attr('x1',0).attr('x2',0).attr('y1',-4).attr('y2',3).attr('stroke','#7d8b9b').attr('stroke-width',1.2);
+  sb.append('line').attr('class','sb1').attr('y1',-4).attr('y2',3).attr('stroke','#7d8b9b').attr('stroke-width',1.2);
+  sb.append('text').attr('class','sbt').attr('y',-7).attr('fill','#8898a8').attr('font-size',10)
+    .attr('font-family',"'IBM Plex Mono',monospace").attr('text-anchor','middle');
+
+  svg.on('mousemove', onMove).on('mouseleave', () => {
+    svg.select('.cross').attr('opacity', 0);
+    ['rLat','rLon','rDec','rArea','rGauge','rDepth'].forEach(id => document.getElementById(id).textContent = '—');
+  });
+}
+
+function visibleGraticule() {
+  const tl = proj.invert([0,0]), br = proj.invert([W,H]);
+  if (!tl || !br) return {type:'LineString', coordinates:[]};
+  return d3.geoGraticule().step([gratStep,gratStep]).precision(gratStep/4)
+    .extent([[Math.max(-180,tl[0]-gratStep), Math.max(-85,br[1]-gratStep)],
+             [Math.min(180,br[0]+gratStep), Math.min(85,tl[1]+gratStep)]])();
+}
+
+function scaleBar() {
+  const c = proj.invert([W/2,H/2]), e = proj.invert([W/2+100,H/2]);
+  if (!c || !e) return;
+  const km100 = d3.geoDistance(c,e) * 6371;
+  const nice = [1,2,5,10,20,50,100,200,500,1000,2000].reduce((a,b)=>Math.abs(b-km100)<Math.abs(a-km100)?b:a);
+  const px = nice / km100 * 100;
+  svg.select('.sbl').attr('x2',px);
+  svg.select('.sb1').attr('x1',px).attr('x2',px);
+  svg.select('.sbt').attr('x',px/2).text(d3.format(',')(nice) + ' km');
+}
+
+function gratLabels() {
+  const g = svg.select('.gratLbl'); g.selectAll('*').remove();
+  if (gratStep > 2) return;
+  const tl = proj.invert([0,0]), br = proj.invert([W,H]);
+  const dec = gratStep < 0.1 ? 2 : 2;
+  for (let x = Math.ceil(tl[0]/gratStep)*gratStep; x <= br[0]; x += gratStep) {
+    const p = proj([x, br[1]]);
+    if (!p || p[0] < 30 || p[0] > W-20) continue;
+    g.append('text').attr('x',p[0]).attr('y',H-3).attr('text-anchor','middle').attr('fill','#4c5966')
+      .attr('font-size',9).attr('font-family',"'IBM Plex Mono',monospace").text(x.toFixed(dec)+'°E');
+  }
+  for (let y = Math.floor(tl[1]/gratStep)*gratStep; y >= br[1]; y -= gratStep) {
+    const p = proj([br[0], y]);
+    if (!p || p[1] < 12 || p[1] > H-26) continue;
+    g.append('text').attr('x',W-4).attr('y',p[1]-3).attr('text-anchor','end').attr('fill','#4c5966')
+      .attr('font-size',9).attr('font-family',"'IBM Plex Mono',monospace").text(Math.abs(y).toFixed(dec)+'°S');
+  }
+}
+
+function redraw() {
+  svg.select('.grat').attr('d', path(visibleGraticule()));
+  svg.selectAll('.stpath').attr('d', path);
+  svg.select('.coast').attr('d', level === 'nation' || !coast10 ? null : path(coast10));
+  const riv = svg.select('.rivers').selectAll('path')
+    .data(level === 'nation' || !rivers10 ? [] : rivers10.features);
+  riv.exit().remove();
+  riv.enter().append('path').attr('fill','none').attr('stroke','#2f6b86').attr('stroke-width',0.8)
+    .attr('opacity',0.85).merge(riv).attr('d', path);
+  svg.selectAll('.floodShape').attr('d', d => path(d.geo));
+  svg.selectAll('.mk').attr('transform', d => 'translate(' + proj([d.lon,d.lat]).join(',') + ')');
+  gratLabels();
+  scaleBar();
+}
+
+function fitTo(geo, animate, done) {
+  lastFit = geo;
+  const t = d3.geoMercator().fitExtent([[18,18],[W-18,H-18]], geo);
+  const s1 = t.scale(), t1 = t.translate();
+  const finish = () => { proj.scale(s1).translate(t1); redraw(); if (done) done(); };
+  if (!animate) { finish(); return; }
+  const s0 = proj.scale(), t0 = proj.translate();
+  const is = d3.interpolate(Math.log(s0), Math.log(s1)), it = d3.interpolate(t0, t1);
+  if (window.__zt) window.__zt.stop();
+  clearTimeout(window.__zf);
+  const D = 800;
+  window.__zt = d3.timer(el => {
+    const p = Math.min(1, el/D), k = d3.easeCubicInOut(p);
+    proj.scale(Math.exp(is(k))).translate(it(k)); redraw();
+    if (p === 1) { window.__zt.stop(); clearTimeout(window.__zf); if (done) done(); }
+  });
+  window.__zf = setTimeout(() => { window.__zt.stop(); finish(); }, D + 120);
+}
+
+function blob(lon, lat, r, seed) {
+  const pts = [];
+  for (let i = 0; i < 30; i++) {
+    const a = i/30*Math.PI*2;
+    const k = 1 + 0.3*Math.sin(a*3+seed) + 0.16*Math.sin(a*5+seed*2.1);
+    pts.push([lon + Math.cos(a)*r*k/Math.cos(lat*Math.PI/180), lat + Math.sin(a)*r*k]);
+  }
+  pts.push(pts[0]);
+  let area = 0;
+  for (let i = 0; i < pts.length-1; i++) area += pts[i][0]*pts[i+1][1] - pts[i+1][0]*pts[i][1];
+  if (area > 0) pts.reverse();
+  return {type:'Polygon', coordinates:[pts]};
+}
+
+/* ---------------------------------------------------------------- cursor readout */
+function onMove(e) {
+  const pt = d3.pointer(e, svg.node());
+  const ll = proj.invert(pt);
+  if (!ll) return;
+  const cross = svg.select('.cross').attr('opacity', 1);
+  cross.select('.cx').attr('x1',0).attr('x2',W).attr('y1',pt[1]).attr('y2',pt[1]);
+  cross.select('.cy').attr('y1',0).attr('y2',H).attr('x1',pt[0]).attr('x2',pt[0]);
+  document.getElementById('rLat').textContent = dms(ll[1],'N','S');
+  document.getElementById('rLon').textContent = dms(ll[0],'E','W');
+  document.getElementById('rDec').textContent = ll[1].toFixed(4) + ', ' + ll[0].toFixed(4);
+
+  let area = '—';
+  if (statesGeo) {
+    const hit = statesGeo.find(f => d3.geoContains(f, ll));
+    area = hit ? hit.properties.name : 'offshore / outside AU';
+  }
+  document.getElementById('rArea').textContent = area;
+
+  const gs = gaugesOf(ev, level === 'nation' ? null : selState);
+  let near = null, nd = Infinity;
+  gs.forEach(g => { const d = d3.geoDistance([g.lon,g.lat], ll) * 6371; if (d < nd) { nd = d; near = g; } });
+  document.getElementById('rGauge').textContent = near ? near.short + ' · ' + nd.toFixed(nd < 10 ? 2 : 1) + ' km' : '—';
+
+  let depth = 0;
+  window.__floods && window.__floods.forEach(f => {
+    if (d3.geoContains(f.geo, ll)) {
+      const d = d3.geoDistance([f.lon,f.lat], ll) * 6371, R = f.km;
+      depth = Math.max(depth, f.dep * Math.max(0, 1 - d/R));
+    }
+  });
+  document.getElementById('rDepth').innerHTML = depth > 0.02
+    ? '<span style="color:#e0854a">' + depth.toFixed(2) + ' m</span> <span style="color:#5d6a77">modelled</span>'
+    : '<span style="color:#5d6a77">outside modelled extent</span>';
+}
+
+/* ---------------------------------------------------------------- render: map layers */
+function renderMap() {
+  const st = svg.select('.states').selectAll('.stpath').data(statesGeo || [], d => d.properties.name);
+  st.exit().remove();
+  st.enter().append('path').attr('class','stpath').attr('stroke','#26333f').attr('stroke-width',0.7)
+    .style('cursor','pointer')
+    .on('click', (e,d) => { if (ev.states[d.properties.name]) selectState(d.properties.name); })
+    .merge(st)
+    .attr('d', path)
+    .transition().duration(600)
+    .attr('fill', d => stateFill(d.properties.name))
+    .attr('stroke', d => selState === d.properties.name ? '#4d6b7d' : '#26333f');
+
+  // national view aggregates to one marker per affected state; gauges appear after drill-in
+  const gs = level === 'nation' ? stateMarks() : gaugesOf(ev, selState);
+  const floods = gs.map((g,i) => {
+    const sev = severity(g);
+    const km = (level === 'nation' ? 55 : 14) * (0.55 + sev * 0.75);
+    const r = km / 111;
+    return {geo: blob(g.lon, g.lat, r, i*2.3+1), lon:g.lon, lat:g.lat, km:km, dep: 0.4 + sev*2.6, sev:sev};
+  });
+  window.__floods = floods;
+  const fl = svg.select('.flood').selectAll('.floodShape').data(floods, (d,i) => i);
+  fl.exit().remove();
+  fl.enter().append('path').attr('class','floodShape').attr('stroke','#2f88b8').attr('stroke-width',0.6)
+    .merge(fl).attr('fill','#1d5a80').attr('opacity', d => 0.22 + d.sev*0.2).attr('d', d => path(d.geo));
+
+  const mk = svg.select('.marks').selectAll('.mk').data(gs, d => d.n);
+  mk.exit().remove();
+  const en = mk.enter().append('g').attr('class','mk').style('cursor','pointer')
+    .on('click', (e,d) => d.agg ? selectState(d.state) : selectGauge(d));
+  en.append('circle').attr('class','pulse').attr('r',6).attr('fill','none').attr('stroke-width',1.4);
+  en.append('circle').attr('class','dot').attr('stroke','#0a1015').attr('stroke-width',1.3);
+  en.append('text').attr('class','lb1').attr('font-size',10.5).attr('font-family',"'IBM Plex Sans',sans-serif");
+  en.append('text').attr('class','lb2').attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace");
+  const all = en.merge(mk);
+  all.select('.pulse').attr('stroke', d => sevColor(severity(d))).attr('opacity', d => severity(d) >= 1 ? 1 : 0);
+  all.select('.dot').attr('r', d => selGauge === d ? 6 : 4.5).attr('fill', d => sevColor(severity(d)));
+  all.select('.lb1').attr('y',-2)
+    .attr('fill', d => selGauge === d ? '#fff' : '#cfd9e4')
+    .text(d => d.agg ? d.short + ' (' + d.count + ' gauges)' : d.short);
+  all.select('.lb2').attr('y',10)
+    .attr('fill', d => sevColor(severity(d)))
+    .text(d => {
+      const pk = d.peak && d.peak[0] !== null ? d.peak[0] : null;
+      if (pk === null) return 'not published';
+      if (d.agg) return metric.fmt(pk) + ' · ' + metric.label.toLowerCase();
+      const now = pk * dayFactor(d), u = d.unit || 'm';
+      return (u === 'm' ? now.toFixed(2) : d3.format(',.0f')(now)) + ' ' + u +
+             (day >= ev.peakDay ? ' peak' : '');
+    });
+  redraw();
+  declutter();
+}
+
+// pick a side per label, then push stacked labels apart in screen space
+function declutter() {
+  const items = [];
+  svg.selectAll('.mk').each(function (d) {
+    const p = proj([d.lon, d.lat]);
+    if (!p || !isFinite(p[0])) return;
+    items.push({ node: this, d: d, x: p[0], y: p[1], dy: 0 });
+  });
+  items.forEach(it => { it.side = it.x > W * 0.6 ? -1 : 1; });
+  [-1, 1].forEach(side => {
+    let last = -1e9;
+    items.filter(it => it.side === side).sort((a, b) => a.y - b.y).forEach(it => {
+      const want = Math.max(it.y, last + 26);
+      it.dy = want - it.y;
+      last = want;
+    });
+  });
+  items.forEach(it => {
+    const g = d3.select(it.node);
+    const x = it.side < 0 ? -9 : 9, an = it.side < 0 ? 'end' : 'start';
+    g.select('.lb1').attr('x', x).attr('text-anchor', an).attr('y', -2 + it.dy);
+    g.select('.lb2').attr('x', x).attr('text-anchor', an).attr('y', 10 + it.dy);
+    g.select('.leader').remove();
+    if (it.dy > 3) {
+      g.insert('line', '.lb1').attr('class','leader')
+        .attr('x1', it.side < 0 ? -5 : 5).attr('x2', x)
+        .attr('y1', 0).attr('y2', it.dy - 4)
+        .attr('stroke', sevColor(severity(it.d))).attr('stroke-width', 0.7).attr('opacity', 0.55);
+    }
+  });
+}
+
+function stateMarks() {
+  return Object.keys(ev.states).map(name => {
+    const gl = gaugesOf(ev, name);
+    const worst = gl.slice().sort((a,b) => severity(b) - severity(a))[0] || {};
+    const rec = ev.states[name][metric.id];
+    return {
+      n: name, short: name, state: name, agg: true, drill: gl,
+      lon: d3.mean(gl, g => g.lon) || 0, lat: d3.mean(gl, g => g.lat) || 0,
+      peak: rec && rec[0] !== null ? rec : (worst.peak || [null,'model']),
+      unit: metric.id === 'gauge' ? 'm' : metric.unit,
+      major: metric.id === 'gauge' ? (worst.major || 0) : 0,
+      count: gl.length
+    };
+  });
+}
+
+function stateFill(name) {
+  const rec = ev.states[name];
+  // the choropleth is a national-comparison encoding; on drill-in it would drown the coast,
+  // rivers and modelled extent the detail view exists to show
+  if (level !== 'nation') return rec ? '#151f27' : '#111920';
+  if (!rec) return '#141c23';
+  const m = rec[metric.id];
+  if (!m || m[0] === null) return '#1a242c';
+  const vals = Object.values(ev.states).map(s => (s[metric.id] && s[metric.id][0]) || 0);
+  const max = d3.max(vals) || 1;
+  const t = Math.pow((m[0] || 0) / max, 0.6);
+  return d3.interpolateRgb('#24343d', metric.color)(0.34 + t*0.66);
+}
+
+/* ---------------------------------------------------------------- render: panels */
+function renderSegs() {
+  const es = d3.select('#eventSeg').selectAll('button').data(EVENTS, d => d.id);
+  es.enter().append('button').on('click', (e,d) => setEvent(d))
+    .merge(es).attr('class', d => d === ev ? 'on' : null).text(d => d.label);
+  const ms = d3.select('#metricSeg').selectAll('button').data(METRICS, d => d.id);
+  ms.enter().append('button').on('click', (e,d) => { metric = d; renderAll(); })
+    .merge(ms).attr('class', d => d === metric ? 'on' : null).text(d => d.label);
+}
+
+function renderTimeline() {
+  const r = document.getElementById('tlRange');
+  r.max = ev.days.length - 1;
+  r.value = day;
+  document.getElementById('tlLabel').textContent =
+    ev.days[day] + ' · ' + (day === ev.peakDay ? 'published peak' : day < ev.peakDay ? 'rising — modelled' : 'recession — modelled');
+}
+
+function renderLegend() {
+  const items = [
+    ['#e0453b','above major level'], ['#e0854a','at major level'], ['#d9a92b','below major'],
+    ['#4b8ef0','minor / monitor'], ['#1d5a80','modelled extent'], ['#2f6b86','river centreline (1:10m)']
+  ];
+  document.getElementById('legend').innerHTML =
+    items.map(i => '<span><span class="sw" style="background:' + i[0] + '"></span>' + i[1] + '</span>').join('') +
+    '<span style="color:var(--mute2)">graticule ' + (gratStep < 1 ? gratStep.toFixed(2) : gratStep) + '° · hover for coordinates</span>';
+}
+
+function renderData() {
+  const body = document.getElementById('dataBody');
+  document.getElementById('dataSub').textContent = ev.window;
+
+  if (level === 'nation') {
+    document.getElementById('dataTitle').textContent = metric.label + ' by state — ' + ev.title;
+    const rows = AU_STATES.filter(s => ev.states[s]);
+    const max = d3.max(rows.map(s => (ev.states[s][metric.id] && ev.states[s][metric.id][0]) || 0)) || 1;
+    body.innerHTML = '<table><thead><tr><th>State</th><th style="width:44%">' + metric.label +
+      ' <span style="color:var(--mute2)">' + metric.unit + '</span></th><th style="text-align:right">Source</th></tr></thead><tbody>' +
+      rows.map(s => {
+        const m = ev.states[s][metric.id];
+        const pub = m && m[0] !== null;
+        const w = pub ? Math.max(3, (m[0]/max)*100) : 0;
+        return '<tr class="clickable" data-state="' + s + '"><td>' + s + '</td>' +
+          '<td><div class="barcell"><i style="width:' + w + '%;background:' + metric.color + '33;border-right:2px solid ' + metric.color + '"></i>' +
+          '<b' + (pub ? '' : ' style="color:var(--mute2)"') + '>' + (pub ? metric.fmt(m[0]) : 'not published') + '</b></div></td>' +
+          '<td style="text-align:right">' + srcChip(m ? m[1] : 'model', m ? m[2] : '') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="note" style="padding:9px 12px">States with no entry had no flooding recorded in this event. ' +
+      'Click a state to load 1:10m geometry and its gauge records.</div>';
+    body.querySelectorAll('tr[data-state]').forEach(tr => tr.onclick = () => selectState(tr.dataset.state));
+  } else {
+    document.getElementById('dataTitle').textContent = selState + ' — gauge records';
+    const gs = gaugesOf(ev, selState);
+    body.innerHTML = gs.map(g => {
+      const pk = g.peak && g.peak[0] !== null ? g.peak[0] : null;
+      const u = g.unit || 'm';
+      const sel = selGauge === g;
+      const cells = [
+        ['peak', pk === null ? null : (u === 'm' ? pk.toFixed(2) + ' m' : d3.format(',')(pk) + ' ' + u), g.peak ? g.peak[1] : 'model'],
+        ['major level', g.major ? (u === 'm' ? g.major.toFixed(2) + ' m' : d3.format(',')(g.major) + ' ' + u) : null, 'bomBne'],
+        ['previous', g.prev && g.prev.length ? g.prev.map(p => p[0] + ' (' + p[1] + ')').join(' · ') : null, g.peak ? g.peak[1] : 'model']
+      ];
+      METRICS.filter(m => m.id !== 'gauge').forEach(m => {
+        const e = g.vals && g.vals[m.id];
+        cells.push([m.label, e && e[0] !== null ? m.fmt(e[0]) : null, e ? e[1] : 'model', e && e[2]]);
+      });
+      return '<div class="gauge" data-g="' + g.n + '" style="cursor:pointer;background:' + (sel ? '#131c24' : 'transparent') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+          '<div><div style="font-size:13px;color:' + (sel ? '#fff' : 'var(--ink)') + '">' + g.n + '</div>' +
+          '<div class="mono" style="font-size:10px;color:var(--mute2);margin-top:2px">' +
+            dms(g.lat,'N','S') + ' ' + dms(g.lon,'E','W') + '</div></div>' +
+          '<div class="mono" style="text-align:right;font-size:18px;color:' + sevColor(severity(g)) + '">' +
+            (pk === null ? '—' : (u === 'm' ? pk.toFixed(2) : d3.format(',')(pk))) +
+            '<div style="font-size:9px;color:var(--mute2);letter-spacing:.05em">' + (u === 'm' ? 'M PEAK' : u.toUpperCase()) + '</div></div>' +
+        '</div>' +
+        '<div class="gv">' + cells.map(c =>
+          '<div><div class="l">' + c[0] + ' ' + srcChip(c[2], c[3]) + '</div><div class="n' + (c[1] ? '' : ' na') + '">' +
+          (c[1] || 'not published') + '</div></div>').join('') + '</div>' +
+        '<div class="note" style="margin-top:7px">' + g.need + '</div></div>';
+    }).join('');
+    body.querySelectorAll('[data-g]').forEach(el => el.onclick = () => {
+      const g = gs.find(x => x.n === el.dataset.g); if (g) selectGauge(g);
+    });
+  }
+}
+
+function renderDispatch() {
+  const gs = gaugesOf(ev, level === 'nation' ? null : selState)
+    .map(g => ({g:g, s:severity(g)})).sort((a,b) => b.s - a.s).slice(0, level === 'nation' ? 3 : 4);
+  document.getElementById('dispCount').textContent =
+    '(' + gs.filter(x => !decisions[x.g.n]).length + ' awaiting the coordinator · modelled)';
+  document.getElementById('dispBody').innerHTML = gs.map((x,i) => {
+    const g = x.g, dec = decisions[g.n];
+    const eta = Math.round(14 + i*9 + (1.4 - Math.min(x.s,1.4))*20);
+    return '<div class="rec">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:12.5px">Task <span class="mono" style="color:#8fc9b1">TEAM-0' + (i+1) + '</span> → ' + g.short + '</span>' +
+        '<span class="mono" style="font-size:11px;color:var(--ink2)">ETA ≈ ' + eta + ' min · exposure index ' + x.s.toFixed(2) + '</span>' +
+      '</div>' +
+      '<div class="note">' + g.need + ' Ranked on published peak vs major level (' +
+        (g.peak && g.peak[0] !== null ? (g.peak[0] + (g.unit || ' m')) : 'no published peak') + ' vs ' + (g.major || '—') +
+        '). Route, arrival time and ranking are modelled for this prototype.</div>' +
+      (dec
+        ? '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:#0f1419;padding:6px 8px">' +
+          '<span class="mono" style="font-size:11.5px;color:' + (dec === 'accepted' ? '#6fd2c4' : dec === 'modified' ? '#d9c169' : '#d98b7e') + '">● ' + dec + '</span>' +
+          '<button class="bMod" data-undo="' + g.n + '" style="flex:0 0 auto">undo</button></div>'
+        : '<div class="btnrow"><button class="bAcc" data-acc="' + g.n + '">Accept</button>' +
+          '<button class="bMod" data-mod="' + g.n + '">Modify</button>' +
+          '<button class="bRej" data-rej="' + g.n + '">Reject</button></div>') +
+      '</div>';
+  }).join('');
+  const bind = (attr, val) => document.querySelectorAll('[data-' + attr + ']').forEach(b => b.onclick = () => {
+    const k = b.getAttribute('data-' + attr);
+    if (val) decisions[k] = val; else delete decisions[k];
+    renderDispatch();
+  });
+  bind('acc','accepted'); bind('mod','modified'); bind('rej','rejected'); bind('undo', null);
+}
+
+function renderSources() {
+  document.getElementById('srclist').innerHTML = Object.keys(SRC).map(k => {
+    const s = SRC[k];
+    return '<div><span class="srctag">' + s[0] + '</span> ' + (s[2] ? '<a href="' + s[2] + '" target="_blank" rel="noreferrer">' + s[1] + '</a>' : s[1]) + '</div>';
+  }).join('');
+}
+
+function renderAll() {
+  renderSegs(); renderTimeline(); renderLegend(); renderMap(); renderData(); renderDispatch();
+}
+
+/* ---------------------------------------------------------------- navigation */
+function setEvent(e) {
+  ev = e; day = e.peakDay; level = 'nation'; selState = null; selGauge = null;
+  gratStep = 5;
+  document.getElementById('backBtn').style.display = 'none';
+  document.getElementById('crumb').innerHTML = 'Australia · ' + ev.title + ' <span style="color:var(--mute2)">' + ev.window + '</span>';
+  fitTo(AU_VIEW, true);
+  renderAll();
+}
+
+function selectState(name) {
+  selState = name; level = 'state'; selGauge = null;
+  loadTier2();
+  const gs = gaugesOf(ev, name);
+  const lons = gs.map(g => g.lon), lats = gs.map(g => g.lat);
+  const pad = 0.6;
+  const geo = gs.length
+    ? box([d3.min(lons)-pad, d3.min(lats)-pad], [d3.max(lons)+pad, d3.max(lats)+pad])
+    : {type:'MultiPoint', coordinates: d3.geoBounds(statesGeo.find(f => f.properties.name === name))};
+  const b = d3.geoBounds(geo);
+  gratStep = niceStep(Math.max(b[1][1]-b[0][1], b[1][0]-b[0][0]));
+  document.getElementById('backBtn').style.display = 'inline-block';
+  document.getElementById('crumb').innerHTML =
+    '<span style="color:var(--mute)">Australia</span> / ' + name +
+    ' <span style="color:var(--mute2)">· ' + ev.title + '</span>';
+  fitTo(geo, true, renderMap);
+  renderAll(); renderLegend();
+}
+
+function selectGauge(g) {
+  selGauge = g;
+  if (level === 'nation') { selectState(g.state); }
+  const pad = 0.28;
+  gratStep = niceStep(pad*2);
+  fitTo(box([g.lon-pad*1.3, g.lat-pad], [g.lon+pad*1.3, g.lat+pad]), true, renderMap);
+  level = 'gauge';
+  document.getElementById('crumb').innerHTML =
+    '<span style="color:var(--mute)">Australia</span> / <span style="color:var(--mute)">' + g.state + '</span> / ' + g.short +
+    ' <span class="mono" style="color:var(--mute2)">' + dms(g.lat,'N','S') + ' ' + dms(g.lon,'E','W') + '</span>';
+  renderMap(); renderData(); renderDispatch(); renderLegend();
+}
+
+document.getElementById('backBtn').onclick = () => {
+  if (level === 'gauge' && selState) { selGauge = null; selectState(selState); }
+  else setEvent(ev);
+};
+document.getElementById('tlRange').oninput = e => {
+  day = +e.target.value; renderTimeline(); renderMap(); renderData(); renderDispatch();
+};
+document.getElementById('playBtn').onclick = () => {
+  playing = !playing;
+  document.getElementById('playBtn').textContent = playing ? '❚❚ PAUSE' : '▶ PLAY';
+  if (playing) {
+    playTimer = setInterval(() => {
+      day = (day + 1) % ev.days.length;
+      renderTimeline(); renderMap(); renderData(); renderDispatch();
+    }, 1100);
+  } else clearInterval(playTimer);
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('backBtn').click();
+});
+
+let rzT = null;
+window.addEventListener('resize', () => {
+  clearTimeout(rzT);
+  rzT = setTimeout(() => {
+    if (!statesGeo) return;
+    measure();
+    fitTo(lastFit, false, renderMap);
+  }, 160);
+});
+
+document.getElementById('crumb').innerHTML = 'Australia · ' + ev.title + ' <span style="color:var(--mute2)">' + ev.window + '</span>';
+renderSources(); renderSegs(); renderTimeline(); renderLegend();
+</script>
+</body>
+</html>

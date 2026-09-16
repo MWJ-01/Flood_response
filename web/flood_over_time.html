@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flood Over Time — Australian Flood Records</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500&display=swap" />
+<script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  :root {
+    --bg:#0b0f13; --panel:#10161c; --line:#1e2833; --line2:#182029;
+    --ink:#dbe3ec; --ink2:#aebbc8; --mute:#7d8b9b; --mute2:#5d6a77;
+    --teal:#3fb6ad; --red:#e0453b; --orange:#e0854a; --amber:#d9a92b; --blue:#4b8ef0; --green:#4fb890; --violet:#8b7fe0;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans',system-ui,sans-serif; }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+  a { color:var(--teal); text-decoration:none; }
+  a:hover { color:#78d8d0; }
+
+  header { position:sticky; top:0; z-index:40; background:rgba(11,15,19,.94);
+           backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+  .hd-in { max-width:1280px; margin:0 auto; padding:10px 18px; display:flex; flex-wrap:wrap; gap:14px;
+           align-items:center; justify-content:space-between; }
+  .nav { display:flex; gap:2px; }
+  .nav a, .nav span.cur { font-size:12px; letter-spacing:.06em; text-transform:uppercase; padding:5px 10px;
+          border:1px solid var(--line); font-family:'IBM Plex Mono',monospace; }
+  .nav span.cur { background:#16222c; color:var(--ink); border-color:#2a3b49; }
+  .nav a { color:var(--mute); }
+  .nav a:hover { color:var(--ink); background:#141d25; }
+  #prog { height:2px; background:var(--teal); width:0%; transition:width .12s linear; }
+
+  .wrap { max-width:1280px; margin:0 auto; padding:0 18px; }
+  .hero { padding:74px 0 54px; border-bottom:1px solid var(--line); }
+  .hero h1 { font-family:'IBM Plex Serif',serif; font-size:clamp(30px,5.2vw,58px); font-weight:400;
+             line-height:1.06; margin:0 0 16px; letter-spacing:-.02em; max-width:19em; }
+  .hero p { font-size:15.5px; line-height:1.68; color:var(--ink2); max-width:62ch; margin:0 0 12px; }
+  .kicker { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+            color:var(--teal); margin-bottom:18px; }
+
+  .stage { display:grid; grid-template-columns:minmax(300px,1fr) minmax(320px,1.45fr); gap:28px;
+           align-items:start; padding:34px 0; }
+  @media (max-width:900px) { .stage { grid-template-columns:1fr; } #vis { position:relative !important; top:auto !important; } }
+  #steps { display:flex; flex-direction:column; }
+  .step { min-height:78vh; display:flex; flex-direction:column; justify-content:center; padding:24px 0;
+          opacity:.26; transition:opacity .5s ease; }
+  .step.on { opacity:1; }
+  .step .num { font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; color:var(--teal); margin-bottom:12px; }
+  .step h2 { font-family:'IBM Plex Serif',serif; font-size:clamp(21px,2.6vw,30px); font-weight:400; line-height:1.22;
+             margin:0 0 14px; letter-spacing:-.01em; }
+  .step p { font-size:14.5px; line-height:1.72; color:var(--ink2); margin:0 0 11px; max-width:52ch; }
+  .step p b { color:var(--ink); font-weight:500; }
+  .srctag { font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--mute2); border:1px solid var(--line);
+            padding:1px 4px; cursor:help; white-space:nowrap; }
+  #vis { position:sticky; top:78px; border:1px solid var(--line); background:var(--panel); }
+  .vis-hd { padding:8px 12px; border-bottom:1px solid var(--line2); display:flex; flex-wrap:wrap; gap:8px;
+            align-items:center; justify-content:space-between; }
+  .vis-hd .t { font-size:11.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
+  .modes { display:flex; gap:1px; background:var(--line2); }
+  .modes button { background:#0d1318; border:none; color:var(--mute); font-family:'IBM Plex Mono',monospace;
+                  font-size:10px; padding:5px 8px; cursor:pointer; letter-spacing:.04em; }
+  .modes button:hover { color:var(--ink); background:#151f27; }
+  .modes button.on { background:#16303a; color:#7fdcd3; }
+  svg#chart { width:100%; height:auto; display:block; }
+  #cursor { border-top:1px solid var(--line2); padding:7px 12px; font-family:'IBM Plex Mono',monospace;
+            font-size:10.5px; color:var(--mute); display:flex; flex-wrap:wrap; gap:14px; min-height:30px; }
+  #cursor b { color:var(--ink); font-weight:500; }
+  .card { border:1px solid var(--line); background:var(--panel); }
+  .card-hd { padding:8px 12px; border-bottom:1px solid var(--line2); font-size:11.5px; font-weight:600;
+             letter-spacing:.05em; text-transform:uppercase; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .note { font-size:11.5px; color:var(--mute2); line-height:1.6; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; padding:7px 8px; color:var(--mute2); font-weight:500; font-size:9.5px; letter-spacing:.06em;
+       text-transform:uppercase; font-family:'IBM Plex Mono',monospace; border-bottom:1px solid var(--line); }
+  td { padding:8px; border-bottom:1px solid var(--line2); color:var(--ink2); }
+  td.n { font-family:'IBM Plex Mono',monospace; text-align:right; color:var(--ink); }
+  #srclist { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:5px 18px; padding:11px 12px; }
+  #srclist div { font-size:11px; color:var(--mute); line-height:1.5; }
+  footer { border-top:1px solid var(--line); margin-top:36px; padding:22px 0 40px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hd-in">
+    <div style="display:flex;gap:11px;align-items:baseline;flex-wrap:wrap">
+      <span style="font-size:15px;font-weight:600;letter-spacing:.02em">Flood Over Time</span>
+      <span class="mono" style="font-size:10px;color:var(--mute)">AUSTRALIAN FLOOD RECORDS · 1893–2022</span>
+    </div>
+    <div class="nav">
+      <a href="operations_map.html">← Operations map</a>
+      <span class="cur">Flood over time</span>
+    </div>
+  </div>
+  <div id="prog"></div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="kicker">Scroll-driven · published gauge records</div>
+    <h1>Every flood peak is a number somebody had to act on before it arrived.</h1>
+    <p>This page reads the same set of published Australian flood observations six different ways. Scroll to move through them; the chart re-sorts and morphs rather than being replaced, so a river you are following stays findable between views.</p>
+    <p class="note">Gauge heights, rainfall totals, dam storages and dwelling counts are as published by the Bureau of Meteorology, state agencies, councils and the reports cited at the foot of this page. Arrival-time interpolation between published observations is modelled. Hover any element for its exact value and coordinates.</p>
+  </div>
+
+  <div class="stage">
+    <div id="steps">
+      <div class="step" data-mode="chrono">
+        <div class="num">01 — CHRONOLOGICAL</div>
+        <h2>A century of record peaks, in the order they happened.</h2>
+        <p>Seventeen gauge records across four states. The vertical axis is metres on the river gauge; the horizontal axis is the year of the peak. Nothing is sorted yet, so the pattern you see is only the pattern of when rivers happened to flood.</p>
+        <p>The tallest mark on the page is the <b>Mary River at Gympie, 22.96 m in February 2022</b> <span class="srctag" data-src="wiki22">W22</span>, the highest Mary River level in over a century.</p>
+      </div>
+      <div class="step" data-mode="rank">
+        <div class="num">02 — RANKED BY MAGNITUDE</div>
+        <h2>Re-sorted by height, the chronology dissolves.</h2>
+        <p>The same seventeen marks, now ordered largest to smallest. Watch each one travel to its new position rather than reappearing there — the point of the morph is that you can follow a single river across the sort.</p>
+        <p>Ranking by raw gauge height flatters big rivers with deep channels. <b>Gympie at 22.96 m</b> outranks <b>Lismore at 14.37 m</b> <span class="srctag" data-src="abcLis">ABC-L</span>, but Lismore is the one where the levee was overtopped by 4.37 m and the CBD was cut off.</p>
+      </div>
+      <div class="step" data-mode="exceed">
+        <div class="num">03 — RANKED BY EXCEEDANCE</div>
+        <h2>Metres above the major flood level is the number that matters.</h2>
+        <p>Each gauge is re-scaled against its own published major flood level, so the bars now read as how far past the town's own definition of a major flood the river went. The order changes completely.</p>
+        <p><b>Lismore exceeded its major level by 4.67 m</b>; <b>Gympie by 10.96 m</b>; <b>Ipswich by 5.02 m</b> <span class="srctag" data-src="wiki22">W22</span>. This is the ranking an operations centre would work from, not the raw-height one.</p>
+      </div>
+      <div class="step" data-mode="share">
+        <div class="num">04 — SHARE BY EVENT</div>
+        <h2>Four events, and how the load was distributed inside each.</h2>
+        <p>The marks collapse into stacked bars, one per event, each segment a gauge sized by its exceedance. The stack shows where an event's pressure concentrated: the 2022 south-east Queensland and Northern Rivers floods spread across seven gauges in two states; Townsville 2019 concentrated on one dam.</p>
+        <p><b>Ross River Dam reached 43.00 m, 247% of capacity</b> <span class="srctag" data-src="tcc">TCC</span>, having received <b>932,748 ML</b> of catchment inflow <span class="srctag" data-src="tccDam">TCC-D</span>.</p>
+      </div>
+      <div class="step" data-mode="parity">
+        <div class="num">05 — AGAINST THE PREVIOUS RECORD</div>
+        <h2>Which peaks broke the record they were measured against.</h2>
+        <p>Each gauge is plotted against its own previous record: horizontal axis the old mark, vertical axis the new one. Anything above the diagonal is a new record. Anything below it was survivable by living memory.</p>
+        <p><b>Lismore's 14.37 m broke the 12.11 m standing since 1954 and 1974</b> <span class="srctag" data-src="sesLis">SES-L</span>. <b>Brisbane's 3.85 m stayed below 2011's 4.46 m and well below 1974's 5.45 m</b> <span class="srctag" data-src="bcc">BCC</span> — and still inundated 23,400 homes across 177 suburbs <span class="srctag" data-src="wiki22">W22</span>.</p>
+      </div>
+      <div class="step" data-mode="burst">
+        <div class="num">06 — RAINFALL THAT ARRIVED FIRST</div>
+        <h2>The rain totals that preceded each peak, scattered then gathered.</h2>
+        <p>Before any gauge moved, rain fell. These are the published catchment and station totals, released from their positions and re-gathered by magnitude.</p>
+        <p><b>Townsville Aero recorded 1,259.8 mm over ten days</b> to 8 February 2019 <span class="srctag" data-src="aidrT">AIDR-T</span>, beating the 925.5 mm standing since 1953. The Brisbane River catchment averaged <b>444.6 mm in four days</b> <span class="srctag" data-src="bomBne">BOM-B</span>, breaking the 397.4 mm of 1974. At Rock Valley above Lismore, <b>503 mm fell in 24 hours</b> <span class="srctag" data-src="aidrN">AIDR-N</span>.</p>
+      </div>
+    </div>
+
+    <div id="vis">
+      <div class="vis-hd">
+        <span class="t" id="visTitle">Record peaks, chronological</span>
+        <div class="modes" id="modeBtns"></div>
+      </div>
+      <svg id="chart" viewBox="0 0 640 470"></svg>
+      <div id="cursor"><span style="color:var(--mute2)">Hover a mark for its exact value, source and coordinates.</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-hd"><span>Every figure on this page</span>
+      <span class="mono" style="font-size:10px;text-transform:none;letter-spacing:0;color:var(--mute2)">sortable · click a column head</span></div>
+    <div style="overflow-x:auto">
+      <table id="fullTable"></table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-hd"><span>Sources</span></div>
+    <div id="srclist"></div>
+    <div class="note" style="padding:0 12px 11px">Where a source publishes no figure for a field, this page prints <i>not published</i> rather than an estimate. Modelled values are tagged <span class="srctag">MOD</span> and exist only to make the prototype's motion and routing legible.</div>
+  </div>
+
+  <footer class="note">
+    Prototype for design iteration. Not an official flood product. Geometry and figures are cited above; interpolation between published observations, dispatch logic and modelled depths are the prototype's own.
+  </footer>
+</div>
+
+<script>
+const SRC = {
+  bcc:   ['BCC','Brisbane City Council, Brisbane Flood Review (tabled 10 May 2022) & historical flood mapping','https://storymaps.arcgis.com/stories/28331baf7c584fb5be84ae1b8b7389f2'],
+  bomBne:['BOM-B','Bureau of Meteorology — Brisbane River below Wivenhoe Dam flood warning system','https://www.bom.gov.au/qld/flood/brochures/brisbane_lower/brisbane_lower.shtml'],
+  bomBur:['BOM-U','Bureau of Meteorology — Burnett River flood warning system','https://www.bom.gov.au/qld/flood/brochures/burnett/burnett.shtml'],
+  guard: ['GDN','The Guardian Australia, 1 March 2022 — Wivenhoe inflow and storage','https://www.pressreader.com/australia/the-guardian-australia/20220301/281659668493973'],
+  wiki22:['W22','Wikipedia — 2022 eastern Australia floods (gauge peaks, rainfall records, homes inundated)','https://en.wikipedia.org/wiki/2022_eastern_Australia_floods'],
+  aidrN: ['AIDR-N','Australian Disaster Resilience Knowledge Hub — Flooding, New South Wales, 2022','https://knowledge.aidr.org.au/resources/flood-flooding-new-south-wales-2022/'],
+  abcLis:['ABC-L','ABC News, 28 Feb 2022 — Lismore levee breach, Wilsons River 14.37 m','https://www.abc.net.au/news/2022-02-28/lismore-flood-emergency-levee-breaks-largest-on-record/100866296'],
+  sesLis:['SES-L','NSW SES — Lismore CBD flood guide (peak 14.37 m, previous records)','https://www.ses.nsw.gov.au/sites/default/files/document/nsw-ses_flood-guide_lismore-cbd_v07_digital.pdf'],
+  tcc:   ['TCC','Townsville City Council — 2019 weather event & Ross River Dam','https://www.townsville.qld.gov.au/community-support/community-safety/disaster-management/2019-weather-event'],
+  tccDam:['TCC-D','Townsville City Council — Ross River Dam catchment inflow 932,748 ML','https://www.townsville.qld.gov.au/water-waste-and-environment/water-supply-and-dams/ross-river-dam'],
+  jba19: ['JBA','JBA Risk Management — retrospective of 2019 Townsville flooding','https://www.jbarisk.com/products-services/event-response/a-retrospective-of-townsville-flooding/'],
+  aidrT: ['AIDR-T','Australian Disaster Resilience Knowledge Hub — 2019 storms and floods, Townsville','https://knowledge.aidr.org.au/resources/2019-storms-and-floods-qld-townsville/'],
+  rf19:  ['RF-T','Risk Frontiers — Townsville 2019 flood, insights from the field','https://riskfrontiers.com/insights/townsville-2019-flood-insights-from-the-field/'],
+  jcu:   ['JCU','James Cook University Centre for Disaster Studies — post-disaster survey, Townsville 2019','https://www.jcu.edu.au/centre-for-disaster-studies/publications/reports/post-disaster-reports/Townsville-2019-flood.pdf'],
+  aidrO: ['AIDR-O','Australian Disaster Resilience Knowledge Hub — Cyclone Oswald, QLD & NSW 2013','https://knowledge.aidr.org.au/resources/cyclone-oswald-queensland-new-south-wales-2013/'],
+  abcBdb:['ABC-B','ABC News, 24 Jan 2023 — Bundaberg, 10 years after ex-TC Oswald','https://www.abc.net.au/news/2023-01-24/renewed-calls-bundaberg-flood-evacuation-route-cyclone-oswald/101882720'],
+  aidrV: ['AIDR-V','Australian Disaster Resilience Knowledge Hub — Flood, Victoria, October 2022','https://knowledge.aidr.org.au/resources/flood-victoria-october-2022/'],
+  rfVic: ['RF-V','Risk Frontiers — The October 2022 Victorian floods','https://riskfrontiers.com/insights/victorian-floods-october-2022/'],
+  ica:   ['ICA','Insurance Council of Australia — 2022 flood insured losses (A$5.81bn, 240,000+ claims)','https://www.reinsurancene.ws/ica-raises-insured-loss-from-2022-australia-floods-to-5-81bn/'],
+  model: ['MOD','Modelled for this prototype — not an official figure','']
+};
+
+// peak / major / previous record in metres on the named gauge unless unit says otherwise
+const G = [
+  {n:'Mary R. at Gympie',            ev:'seq2022', st:'QLD', y:2022, lon:152.6650, lat:-26.1880, peak:22.96, major:12.00, prev:21.95, prevY:2013, src:'wiki22', rain:null,    rainSrc:'model'},
+  {n:'Bremer R. at Ipswich',         ev:'seq2022', st:'QLD', y:2022, lon:152.7620, lat:-27.6135, peak:16.72, major:11.70, prev:19.40, prevY:2011, src:'wiki22', rain:682,    rainSrc:'wiki22'},
+  {n:'Richmond R. at Casino',        ev:'seq2022', st:'NSW', y:2022, lon:153.0500, lat:-28.8600, peak:16.49, major:9.50,  prev:16.21, prevY:2008, src:'aidrN',  rain:null,   rainSrc:'model'},
+  {n:'Wilsons R. at Lismore',        ev:'seq2022', st:'NSW', y:2022, lon:153.2770, lat:-28.8100, peak:14.37, major:9.70,  prev:12.11, prevY:1954, src:'abcLis', rain:503,    rainSrc:'aidrN'},
+  {n:'Burnett R. at Bundaberg',      ev:'bdb2013', st:'QLD', y:2013, lon:152.3500, lat:-24.8660, peak:9.53,  major:7.50,  prev:7.92,  prevY:2010, src:'abcBdb', rain:1000,   rainSrc:'abcBdb'},
+  {n:'Goulburn R. at Seymour',       ev:'vic2022', st:'VIC', y:2022, lon:145.1360, lat:-37.0270, peak:7.64,  major:6.00,  prev:7.64,  prevY:1974, src:'aidrV',  rain:null,   rainSrc:'model'},
+  {n:'Ross R. at Aplins Weir',       ev:'tsv2019', st:'QLD', y:2019, lon:146.7930, lat:-19.2960, peak:7.00,  major:7.00,  prev:6.20,  prevY:1998, src:'jba19',  rain:null,   rainSrc:'model'},
+  {n:'Tweed R. at Murwillumbah',     ev:'seq2022', st:'NSW', y:2022, lon:153.3970, lat:-28.3270, peak:6.51,  major:5.00,  prev:6.20,  prevY:2017, src:'aidrN',  rain:null,   rainSrc:'model'},
+  {n:'Maribyrnong R. at Maribyrnong',ev:'vic2022', st:'VIC', y:2022, lon:144.9010, lat:-37.7720, peak:4.18,  major:2.40,  prev:4.50,  prevY:1906, src:'rfVic',  rain:null,   rainSrc:'model'},
+  {n:'Brisbane R. at City Gauge',    ev:'seq2022', st:'QLD', y:2022, lon:153.0313, lat:-27.4744, peak:3.85,  major:3.50,  prev:4.46,  prevY:2011, src:'bcc',    rain:444.6,  rainSrc:'bomBne'},
+  {n:'Mary R. at Gympie (2013)',     ev:'bdb2013', st:'QLD', y:2013, lon:152.6650, lat:-26.1880, peak:21.95, major:12.00, prev:21.95, prevY:1893, src:'wiki22', rain:null,   rainSrc:'model'},
+  {n:'Brisbane R. at City Gauge (2011)', ev:'hist', st:'QLD', y:2011, lon:153.0313, lat:-27.4744, peak:4.46, major:3.50, prev:5.45, prevY:1974, src:'bcc',      rain:null,   rainSrc:'model'},
+  {n:'Brisbane R. at City Gauge (1974)', ev:'hist', st:'QLD', y:1974, lon:153.0313, lat:-27.4744, peak:5.45, major:3.50, prev:8.35, prevY:1893, src:'bcc',      rain:397.4,  rainSrc:'bomBne'},
+  {n:'Wilsons R. at Lismore (1974)', ev:'hist', st:'NSW', y:1974, lon:153.2770, lat:-28.8100, peak:12.11, major:9.70,  prev:12.11, prevY:1954, src:'sesLis',    rain:null,   rainSrc:'model'},
+  {n:'Ross River Dam',               ev:'tsv2019', st:'QLD', y:2019, lon:146.7530, lat:-19.3560, peak:43.00, major:38.20, prev:41.40, prevY:1998, src:'tcc', unit:'m lake level', rain:1259.8, rainSrc:'aidrT'},
+  {n:'Wivenhoe Dam',                 ev:'seq2022', st:'QLD', y:2022, lon:152.6080, lat:-27.3950, peak:183,   major:100,   prev:190,   prevY:2011, src:'guard', unit:'% FSL', rain:null, rainSrc:'model'},
+  {n:'Townsville Aero',              ev:'tsv2019', st:'QLD', y:2019, lon:146.7661, lat:-19.2483, peak:1259.8,major:925.5, prev:925.5, prevY:1953, src:'aidrT', unit:'mm / 10 d', rain:1259.8, rainSrc:'aidrT'}
+];
+
+const EVL = {
+  seq2022:{l:'SE QLD & Northern Rivers 2022', c:'#e0453b'},
+  tsv2019:{l:'Townsville 2019',               c:'#4b8ef0'},
+  bdb2013:{l:'Bundaberg 2013 (ex-TC Oswald)', c:'#d9a92b'},
+  vic2022:{l:'Victoria & N. Tasmania 2022',   c:'#8b7fe0'},
+  hist:   {l:'Earlier record peaks',          c:'#7d8b9b'}
+};
+
+const MODES = [
+  {id:'chrono', label:'TIME',      title:'Record peaks, chronological'},
+  {id:'rank',   label:'MAGNITUDE', title:'Ranked by gauge height'},
+  {id:'exceed', label:'EXCEEDANCE',title:'Ranked by metres above major level'},
+  {id:'share',  label:'SHARE',     title:'Exceedance share within each event'},
+  {id:'parity', label:'RECORD',    title:'New peak vs previous record'},
+  {id:'burst',  label:'RAINFALL',  title:'Published rainfall totals'}
+];
+
+const W = 640, H = 470, M = {t:26, r:22, b:42, l:132};
+const IW = W - M.l - M.r, IH = H - M.t - M.b;
+let mode = 'chrono', locked = null;
+
+const svg = d3.select('#chart');
+svg.append('rect').attr('width',W).attr('height',H).attr('fill','#0c1217');
+const gGrid = svg.append('g'), gAx = svg.append('g'), gMarks = svg.append('g'), gAnn = svg.append('g');
+
+function comparable(d) { return !d.unit; }              // metres-on-gauge series only
+function exceed(d) { return d.peak - d.major; }
+function dms(v, pos, neg) {
+  const h = v < 0 ? neg : pos; v = Math.abs(v);
+  const dd = Math.floor(v), mf = (v-dd)*60, mm = Math.floor(mf), ss = (mf-mm)*60;
+  return dd + '°' + String(mm).padStart(2,'0') + "'" + ss.toFixed(1).padStart(4,'0') + '"' + h;
+}
+function srcOf(k) { return SRC[k] || SRC.model; }
+function unitOf(d) { return d.unit || 'm'; }
+
+function cursorSet(d) {
+  const el = document.getElementById('cursor');
+  if (!d) {
+    el.innerHTML = '<span style="color:var(--mute2)">Hover a mark for its exact value, source and coordinates.</span>';
+    return;
+  }
+  const s = srcOf(d.src);
+  el.innerHTML =
+    '<span>GAUGE <b>' + d.n + '</b></span>' +
+    '<span>PEAK <b>' + d.peak.toFixed(unitOf(d) === 'm' ? 2 : 1) + ' ' + unitOf(d) + '</b> (' + d.y + ')</span>' +
+    '<span>MAJOR <b>' + d.major + '</b></span>' +
+    '<span>EXCEED <b style="color:' + (exceed(d) > 0 ? 'var(--orange)' : 'var(--blue)') + '">' +
+      (exceed(d) > 0 ? '+' : '') + exceed(d).toFixed(2) + '</b></span>' +
+    '<span>PREV <b>' + d.prev + ' (' + d.prevY + ')</b></span>' +
+    '<span>LAT <b>' + dms(d.lat,'N','S') + '</b></span>' +
+    '<span>LON <b>' + dms(d.lon,'E','W') + '</b></span>' +
+    '<span>SRC <span class="srctag" title="' + s[1].replace(/"/g,'&quot;') + '">' + s[0] + '</span></span>';
+}
+
+/* ---- layouts: each returns {x,y,w,h,fill,op} per datum, plus axes ---- */
+function layout(m) {
+  const data = G.slice();
+  let pos = {}, axes = null, ann = [];
+
+  if (m === 'chrono' || m === 'rank') {
+    const set = data.filter(comparable);
+    const ys = d3.scaleLinear().domain([0, d3.max(set, d => d.peak)*1.06]).range([IH, 0]);
+    const order = m === 'chrono'
+      ? d3.sort(set, d => d.y, d => -d.peak)
+      : d3.sort(set, d => -d.peak);
+    const xs = d3.scaleBand().domain(order.map(d => d.n)).range([0, IW]).padding(0.28);
+    order.forEach(d => {
+      pos[d.n] = {x: M.l + xs(d.n), y: M.t + ys(d.peak), w: xs.bandwidth(), h: IH - ys(d.peak),
+                  fill: EVL[d.ev].c, op: 0.9, label: d.peak.toFixed(2)};
+    });
+    data.filter(d => !comparable(d)).forEach(d => { pos[d.n] = {x:M.l, y:M.t+IH, w:0, h:0, fill:EVL[d.ev].c, op:0}; });
+    axes = {y: ys, yLabel: 'gauge height (m)', xTicks: order.map(d => ({k:d.n, t: m === 'chrono' ? d.y : d.n.split(' at ')[1] || d.n, x: M.l + xs(d.n) + xs.bandwidth()/2}))};
+    ann = m === 'rank' ? [{y: M.t + ys(12), t:'12 m'}] : [];
+  }
+
+  else if (m === 'exceed') {
+    const set = d3.sort(data.filter(comparable), d => -exceed(d));
+    const xs = d3.scaleLinear().domain([Math.min(0, d3.min(set, exceed)*1.1), d3.max(set, exceed)*1.06]).range([0, IW]);
+    const ys = d3.scaleBand().domain(set.map(d => d.n)).range([0, IH]).padding(0.24);
+    const x0 = M.l + xs(0);
+    set.forEach(d => {
+      const v = exceed(d), a = M.l + xs(Math.min(0, v)), b = M.l + xs(Math.max(0, v));
+      pos[d.n] = {x:a, y:M.t + ys(d.n), w:Math.max(1, b-a), h:ys.bandwidth(),
+                  fill: v > 0 ? EVL[d.ev].c : '#3d4d5c', op:0.9,
+                  label:(v>0?'+':'') + v.toFixed(2) + ' m', labelRight:true};
+    });
+    data.filter(d => !comparable(d)).forEach(d => { pos[d.n] = {x:x0, y:M.t+IH, w:0, h:0, fill:EVL[d.ev].c, op:0}; });
+    axes = {xLin: xs, yBand: ys, zero: x0, xLabel:'metres above the gauge’s major flood level'};
+  }
+
+  else if (m === 'share') {
+    const evs = ['seq2022','tsv2019','bdb2013','vic2022','hist'];
+    const byEv = {};
+    evs.forEach(e => byEv[e] = d3.sort(data.filter(d => d.ev === e && comparable(d)), d => -exceed(d)));
+    const totals = evs.map(e => d3.sum(byEv[e], d => Math.max(0.01, exceed(d))));
+    const xs = d3.scaleBand().domain(evs).range([0, IW]).padding(0.34);
+    const maxT = d3.max(totals);
+    const ys = d3.scaleLinear().domain([0, maxT*1.08]).range([IH, 0]);
+    evs.forEach((e,i) => {
+      let acc = 0;
+      byEv[e].forEach(d => {
+        const v = Math.max(0.01, exceed(d));
+        const y1 = ys(acc + v), y0 = ys(acc);
+        acc += v;
+        pos[d.n] = {x: M.l + xs(e), y: M.t + y1, w: xs.bandwidth(), h: Math.max(1, y0 - y1),
+                    fill: EVL[e].c, op: 0.34 + 0.5 * (v / Math.max(...byEv[e].map(exceed))),
+                    label: v >= 2 ? d.n.split(' at ')[1] || d.n : ''};
+      });
+    });
+    data.filter(d => !comparable(d)).forEach(d => { pos[d.n] = {x:M.l + xs(d.ev), y:M.t+IH, w:xs.bandwidth(), h:0, fill:EVL[d.ev].c, op:0}; });
+    axes = {y: ys, yLabel:'summed exceedance (m)', xTicks: evs.map(e => ({k:e, t: EVL[e].l.split(' ').slice(0,2).join(' '), x: M.l + xs(e) + xs.bandwidth()/2, sub: d3.format('.1f')(totals[evs.indexOf(e)]) + ' m'}))};
+  }
+
+  else if (m === 'parity') {
+    const set = data.filter(comparable);
+    const mx = d3.max(set, d => Math.max(d.peak, d.prev)) * 1.08;
+    const xs = d3.scaleLinear().domain([0, mx]).range([0, IW]);
+    const ys = d3.scaleLinear().domain([0, mx]).range([IH, 0]);
+    set.forEach(d => {
+      const r = 4 + Math.max(0, exceed(d)) * 0.9;
+      pos[d.n] = {x: M.l + xs(d.prev) - r, y: M.t + ys(d.peak) - r, w: r*2, h: r*2, rx: r,
+                  fill: d.peak > d.prev ? EVL[d.ev].c : '#3d4d5c', op:0.9,
+                  label: d.peak > d.prev ? d.n.split(' at ')[1] || d.n : ''};
+    });
+    data.filter(d => !comparable(d)).forEach(d => { pos[d.n] = {x:M.l, y:M.t+IH, w:0, h:0, fill:EVL[d.ev].c, op:0}; });
+    axes = {xLin: xs, y: ys, xLabel:'previous record (m)', yLabel:'this peak (m)',
+            diag:[[M.l + xs(0), M.t + ys(0)],[M.l + xs(mx), M.t + ys(mx)]]};
+  }
+
+  else if (m === 'burst') {
+    const set = data.filter(d => d.rain !== null);
+    const sorted = d3.sort(set, d => -d.rain);
+    const xs = d3.scaleBand().domain(sorted.map(d => d.n)).range([0, IW]).padding(0.3);
+    const ys = d3.scaleLinear().domain([0, d3.max(set, d => d.rain)*1.1]).range([IH, 0]);
+    sorted.forEach(d => {
+      pos[d.n] = {x: M.l + xs(d.n), y: M.t + ys(d.rain), w: xs.bandwidth(), h: IH - ys(d.rain),
+                  fill: '#d9a92b', op:0.85, label: d3.format(',.1f')(d.rain)};
+    });
+    data.filter(d => d.rain === null).forEach(d => {
+      pos[d.n] = {x: M.l + IW/2, y: M.t + IH/2, w:0, h:0, fill:'#2a3742', op:0};
+    });
+    axes = {y: ys, yLabel:'rainfall (mm)', xTicks: sorted.map(d => ({k:d.n, t: d.n.split(' at ')[1] || d.n.split(' (')[0], x: M.l + xs(d.n) + xs.bandwidth()/2, sub: d.y}))};
+  }
+
+  return {pos, axes, ann};
+}
+
+function draw(animate) {
+  const {pos, axes, ann} = layout(mode);
+  const T = animate ? 780 : 0;
+  const ease = d3.easeCubicInOut;
+
+  // grid + axes
+  gGrid.selectAll('*').remove();
+  gAx.selectAll('*').remove();
+  const isBarH = mode === 'exceed';
+
+  if (axes && axes.y) {
+    axes.y.ticks(6).forEach(t => {
+      const y = M.t + axes.y(t);
+      gGrid.append('line').attr('x1',M.l).attr('x2',M.l+IW).attr('y1',y).attr('y2',y)
+        .attr('stroke','#182430').attr('stroke-width', t === 0 ? 1 : 0.5);
+      gAx.append('text').attr('x',M.l-8).attr('y',y+3.5).attr('text-anchor','end').attr('fill','#5d6a77')
+        .attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace").text(d3.format(',')(t));
+    });
+    gAx.append('text').attr('x',M.l-8).attr('y',M.t-10).attr('text-anchor','end').attr('fill','#7d8b9b')
+      .attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace").text(axes.yLabel || '');
+  }
+  if (axes && axes.xLin) {
+    axes.xLin.ticks(6).forEach(t => {
+      const x = M.l + axes.xLin(t);
+      gGrid.append('line').attr('y1',M.t).attr('y2',M.t+IH).attr('x1',x).attr('x2',x)
+        .attr('stroke','#182430').attr('stroke-width', t === 0 ? 1.2 : 0.5);
+      gAx.append('text').attr('x',x).attr('y',M.t+IH+15).attr('text-anchor','middle').attr('fill','#5d6a77')
+        .attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace").text(t);
+    });
+    gAx.append('text').attr('x',M.l+IW).attr('y',M.t+IH+32).attr('text-anchor','end').attr('fill','#7d8b9b')
+      .attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace").text(axes.xLabel || '');
+  }
+  if (axes && axes.yBand) {
+    axes.yBand.domain().forEach(k => {
+      gAx.append('text').attr('x',M.l-8).attr('y',M.t + axes.yBand(k) + axes.yBand.bandwidth()/2 + 3.5)
+        .attr('text-anchor','end').attr('fill','#8898a8').attr('font-size',9.5)
+        .attr('font-family',"'IBM Plex Sans',sans-serif").text(k.replace(' at ',' · ').replace(' (2013)','·13').replace(' (2011)','·11').replace(' (1974)','·74'));
+    });
+  }
+  if (axes && axes.xTicks) {
+    axes.xTicks.forEach(t => {
+      gAx.append('text').attr('x',t.x).attr('y',M.t+IH+15).attr('text-anchor','middle').attr('fill','#7d8b9b')
+        .attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace").text(t.t);
+      if (t.sub) gAx.append('text').attr('x',t.x).attr('y',M.t+IH+27).attr('text-anchor','middle').attr('fill','#4c5966')
+        .attr('font-size',9).attr('font-family',"'IBM Plex Mono',monospace").text(t.sub);
+    });
+  }
+  if (axes && axes.diag) {
+    gGrid.append('line').attr('x1',axes.diag[0][0]).attr('y1',axes.diag[0][1])
+      .attr('x2',axes.diag[1][0]).attr('y2',axes.diag[1][1])
+      .attr('stroke','#3f5563').attr('stroke-dasharray','5 4').attr('stroke-width',1);
+    gAx.append('text').attr('x',axes.diag[1][0]-6).attr('y',axes.diag[1][1]+14).attr('text-anchor','end')
+      .attr('fill','#5d6a77').attr('font-size',9.5).attr('font-family',"'IBM Plex Mono',monospace")
+      .text('new peak = previous record');
+    gAx.append('text').attr('x',M.l+10).attr('y',M.t+16).attr('fill','#8898a8').attr('font-size',10)
+      .attr('font-family',"'IBM Plex Mono',monospace").text('↑ broke the record');
+  }
+
+  // marks
+  const sel = gMarks.selectAll('.mk').data(G, d => d.n);
+  const en = sel.enter().append('g').attr('class','mk').style('cursor','pointer');
+  en.append('rect').attr('class','bar');
+  en.append('text').attr('class','vlab').attr('font-family',"'IBM Plex Mono',monospace").attr('font-size',9.5);
+  const all = en.merge(sel);
+
+  all.on('mouseenter', (e,d) => { locked = d; cursorSet(d); highlight(d); })
+     .on('mouseleave', () => { locked = null; cursorSet(null); highlight(null); });
+
+  all.select('.bar').transition().duration(T).ease(ease)
+    .attr('x', d => pos[d.n].x).attr('y', d => pos[d.n].y)
+    .attr('width', d => Math.max(0, pos[d.n].w)).attr('height', d => Math.max(0, pos[d.n].h))
+    .attr('rx', d => pos[d.n].rx || 0)
+    .attr('fill', d => pos[d.n].fill).attr('opacity', d => pos[d.n].op);
+
+  all.select('.vlab').transition().duration(T).ease(ease)
+    .attr('x', d => pos[d.n].labelRight ? pos[d.n].x + pos[d.n].w + 5 : pos[d.n].x + pos[d.n].w/2)
+    .attr('y', d => pos[d.n].labelRight ? pos[d.n].y + pos[d.n].h/2 + 3.5
+                    : (mode === 'parity' ? pos[d.n].y - 5 : pos[d.n].y - 4))
+    .attr('text-anchor', d => pos[d.n].labelRight ? 'start' : 'middle')
+    .attr('fill', d => mode === 'share' ? '#0c1217' : '#aebbc8')
+    .attr('opacity', d => pos[d.n].op > 0 && pos[d.n].label ? 1 : 0)
+    .attr('font-size', mode === 'share' ? 9 : 9.5);
+  all.select('.vlab').text(d => pos[d.n].label || '');
+  if (mode === 'share') {
+    all.select('.vlab').transition().delay(T).duration(0)
+      .attr('x', d => pos[d.n].x + 5).attr('y', d => pos[d.n].y + 12).attr('text-anchor','start');
+  }
+
+  // annotations
+  gAnn.selectAll('*').remove();
+  ann.forEach(a => {
+    gAnn.append('line').attr('x1',M.l).attr('x2',M.l+IW).attr('y1',a.y).attr('y2',a.y)
+      .attr('stroke','#e0854a').attr('stroke-dasharray','4 4').attr('stroke-width',0.8).attr('opacity',0.6);
+    gAnn.append('text').attr('x',M.l+IW).attr('y',a.y-4).attr('text-anchor','end').attr('fill','#e0854a')
+      .attr('font-size',9).attr('font-family',"'IBM Plex Mono',monospace").text(a.t);
+  });
+
+  document.getElementById('visTitle').textContent = MODES.find(m => m.id === mode).title;
+  d3.select('#modeBtns').selectAll('button').attr('class', d => d.id === mode ? 'on' : null);
+}
+
+function highlight(d) {
+  gMarks.selectAll('.mk').select('.bar').attr('stroke', x => d && x.n === d.n ? '#fff' : null)
+    .attr('stroke-width', x => d && x.n === d.n ? 1.4 : null);
+}
+
+function setMode(m, animate) {
+  if (m === mode) return;
+  mode = m; draw(animate !== false);
+}
+
+d3.select('#modeBtns').selectAll('button').data(MODES, d => d.id).enter().append('button')
+  .text(d => d.label).on('click', (e,d) => setMode(d.id));
+
+/* ---- scroll driving ---- */
+const steps = Array.from(document.querySelectorAll('.step'));
+const io = new IntersectionObserver(entries => {
+  entries.forEach(en => {
+    if (en.isIntersecting && en.intersectionRatio > 0.42) {
+      steps.forEach(s => s.classList.toggle('on', s === en.target));
+      setMode(en.target.dataset.mode);
+    }
+  });
+}, {threshold:[0.42, 0.6], rootMargin:'-16% 0px -16% 0px'});
+steps.forEach(s => io.observe(s));
+
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight);
+  document.getElementById('prog').style.width = (p*100).toFixed(1) + '%';
+}, {passive:true});
+
+/* ---- table ---- */
+let sortKey = 'peak', sortDir = -1;
+function renderTable() {
+  const cols = [
+    ['n','Gauge / station', d => d.n],
+    ['y','Year', d => d.y],
+    ['st','State', d => d.st],
+    ['peak','Peak', d => d.peak.toFixed(unitOf(d) === 'm' ? 2 : 1) + ' ' + unitOf(d)],
+    ['major','Major level', d => d.major ? d.major + ' ' + unitOf(d) : '—'],
+    ['exc','Exceedance', d => (exceed(d) > 0 ? '+' : '') + exceed(d).toFixed(2)],
+    ['prev','Previous record', d => d.prev + ' (' + d.prevY + ')'],
+    ['rain','Rainfall', d => d.rain === null ? 'not published' : d3.format(',.1f')(d.rain) + ' mm'],
+    ['coord','Coordinates', d => dms(d.lat,'N','S') + ' ' + dms(d.lon,'E','W')],
+    ['src','Source', d => { const s = srcOf(d.src); return '<span class="srctag" title="' + s[1].replace(/"/g,'&quot;') + '">' + s[0] + '</span>'; }]
+  ];
+  const val = {n:d=>d.n, y:d=>d.y, st:d=>d.st, peak:d=>d.peak, major:d=>d.major, exc:d=>exceed(d),
+               prev:d=>d.prev, rain:d=>d.rain === null ? -1 : d.rain, coord:d=>d.lat, src:d=>d.src};
+  const rows = G.slice().sort((a,b) => {
+    const va = val[sortKey](a), vb = val[sortKey](b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+  document.getElementById('fullTable').innerHTML =
+    '<thead><tr>' + cols.map(c =>
+      '<th style="cursor:pointer" data-k="' + c[0] + '">' + c[1] + (sortKey === c[0] ? (sortDir < 0 ? ' ↓' : ' ↑') : '') + '</th>').join('') +
+    '</tr></thead><tbody>' +
+    rows.map(d => '<tr>' + cols.map((c,i) =>
+      '<td' + (i >= 3 && i <= 7 ? ' class="n"' : '') + '>' + c[2](d) + '</td>').join('') + '</tr>').join('') +
+    '</tbody>';
+  document.querySelectorAll('#fullTable th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (k === sortKey) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+    renderTable();
+  });
+}
+
+document.getElementById('srclist').innerHTML = Object.keys(SRC).map(k => {
+  const s = SRC[k];
+  return '<div><span class="srctag">' + s[0] + '</span> ' +
+    (s[2] ? '<a href="' + s[2] + '" target="_blank" rel="noreferrer">' + s[1] + '</a>' : s[1]) + '</div>';
+}).join('');
+document.querySelectorAll('.srctag[data-src]').forEach(el => {
+  const s = srcOf(el.dataset.src); el.title = s[1];
+});
+
+steps[0].classList.add('on');
+draw(false);
+renderTable();
+cursorSet(null);
+</script>
+</body>
+</html>
